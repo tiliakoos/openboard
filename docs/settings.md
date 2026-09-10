@@ -37,8 +37,9 @@ typing, wherever the cursor is. **custom shortcut** replays any keyboard chord y
 pick it, click *Record shortcut*, press the keys. On the action keys you can choose whether
 the pad key taps the chord or holds it down for as long as you hold the key, which is how a
 push-to-talk hotkey wants to be driven; the dial and the joystick only tap. Mark a shortcut
-as dictation and the ring spins once the mic is running — gated by Colors → Spin while
-dictating.
+as dictation, or bind a built-in voice action, and choose how the ring tracks: **Follow
+the mic** spins while the system mic is active; **Until next press** stays on from one
+press until you press again. Both are gated by Colors → Spin while dictating.
 
 ## Colors — states, laps and shows
 

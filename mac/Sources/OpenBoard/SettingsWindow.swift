@@ -648,6 +648,9 @@ struct CapInspector: View {
                 if board.actions[cell.id]?.needsShortcut == true {
                     shortcutSection(key: cell.id, allowHold: true)
                 }
+                if board.actions[cell.id]?.isBuiltInVoice == true {
+                    voiceTrackingSection(binding: builtInVoiceTrackingBinding)
+                }
                 capPicker(allowNone: false)
                 if cell.span > 1 {
                     // Kept: the title reads "ACT10 + ACT11", which looks like two keys
@@ -683,6 +686,7 @@ struct CapInspector: View {
                 var next = chord
                 next.mode = recorded?.mode ?? .tap
                 next.voice = recorded?.voice ?? false
+                next.voiceTracking = recorded?.voiceTracking ?? .mic
                 board.updatePreferences { $0.shortcuts[key] = next }
                 commands.bindingsChanged()
             }
@@ -708,13 +712,54 @@ struct CapInspector: View {
             Toggle(isOn: shortcutVoiceBinding(key)) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Treat as dictation").font(.system(size: 12.5))
-                    Text("Ring spins once the mic starts. Silence it under Colors → Spin while dictating.")
+                    Text("Ring feedback while dictating. Silence it under Colors → Spin while dictating.")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
             }
             .toggleStyle(.switch)
             .padding(.top, 4)
+            if board.preferences.shortcuts[key]?.voice == true {
+                voiceTrackingSection(binding: shortcutVoiceTrackingBinding(key))
+            }
         }
+    }
+
+    private func voiceTrackingSection(binding: Binding<VoiceTracking>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("RING WHILE DICTATING")
+                .font(.system(size: 10, weight: .semibold)).kerning(0.8)
+                .foregroundStyle(.tertiary)
+            Picker("", selection: binding) {
+                Text("Follow the mic").tag(VoiceTracking.mic)
+                Text("Until next press").tag(VoiceTracking.session)
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            Text("Follow the mic spins while the system mic is active. Until next press stays on from this press until you press again.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, 4)
+    }
+
+    private var builtInVoiceTrackingBinding: Binding<VoiceTracking> {
+        Binding(
+            get: { board.preferences.voiceTracking },
+            set: { tracking in
+                board.updatePreferences { $0.voiceTracking = tracking }
+                commands.bindingsChanged()
+            }
+        )
+    }
+
+    private func shortcutVoiceTrackingBinding(_ key: String) -> Binding<VoiceTracking> {
+        Binding(
+            get: { board.preferences.shortcuts[key]?.voiceTracking ?? .mic },
+            set: { tracking in
+                board.updatePreferences { $0.shortcuts[key]?.voiceTracking = tracking }
+                commands.bindingsChanged()
+            }
+        )
     }
 
     private func shortcutVoiceBinding(_ key: String) -> Binding<Bool> {

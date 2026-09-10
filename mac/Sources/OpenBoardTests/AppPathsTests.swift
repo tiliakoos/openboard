@@ -525,6 +525,14 @@ func runVoiceRingTests() {
         expect(Preferences.merging(prefs.json).voiceChord)
     }
 
+    test("voiceTracking defaults to mic and round-trips") {
+        expectEqual(Preferences.default.voiceTracking, .mic)
+        expectEqual(Preferences.merging(["voiceTracking": "session"]).voiceTracking, .session)
+        var prefs = Preferences.default
+        prefs.voiceTracking = .session
+        expectEqual(Preferences.merging(prefs.json).voiceTracking, .session)
+    }
+
     test("rainbow is a real effect the firmware knows") {
         // The ring is written as a lighting side, not a show, so it holds until the
         // belief ends rather than running for a fixed duration.

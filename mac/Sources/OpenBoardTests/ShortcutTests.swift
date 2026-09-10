@@ -54,6 +54,18 @@ func runShortcutTests() {
         expect(!Shortcut(json: ["keyCode": 48, "key": "Tab"])!.voice)
     }
 
+    test("voiceTracking defaults to mic and round-trips through JSON") {
+        expectEqual(Shortcut(keyCode: 48, key: "Tab").voiceTracking, .mic)
+        let chord = Shortcut(
+            keyCode: 48, modifiers: [.control], key: "Tab", voice: true, voiceTracking: .session
+        )
+        expectEqual(Shortcut(json: chord.json), chord)
+        expectEqual(chord.json["voiceTracking"] as? String, "session")
+        expectEqual(
+            Shortcut(json: ["keyCode": 48, "key": "Tab", "voice": true])!.voiceTracking, .mic
+        )
+    }
+
     test("the two new actions are wired into the pickers") {
         expectEqual(KeyAction(rawValue: "enter"), .enter)
         expectEqual(KeyAction(rawValue: "shortcut"), .shortcut)

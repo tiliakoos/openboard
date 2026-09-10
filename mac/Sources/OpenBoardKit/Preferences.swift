@@ -85,6 +85,9 @@ public struct Preferences: Equatable, Sendable {
     /// a bound chord types nothing, ever. Off by default because it only works once
     /// the chord is added to `~/.claude/keybindings.json`.
     public var voiceChord: Bool
+    /// How built-in voice keys (`voice-tap`, `voice-talk`, `voice-toggle`) track the
+    /// dictation ring. Custom shortcuts carry their own on `Shortcut.voiceTracking`.
+    public var voiceTracking: VoiceTracking
 
     public struct Encoder: Equatable, Sendable {
         /// `scroll-up` or `scroll-down`, per direction.
@@ -282,7 +285,8 @@ public struct Preferences: Equatable, Sendable {
         // something. See SessionRegistry.decay.
         doneDecaySeconds: 0,
         holdAttention: true,
-        maxHoldSeconds: 60
+        maxHoldSeconds: 60,
+        voiceTracking: .mic
     )
 
     public init(
@@ -305,7 +309,8 @@ public struct Preferences: Equatable, Sendable {
         doneDecaySeconds: Int,
         holdAttention: Bool = true,
         maxHoldSeconds: Int,
-        voiceChord: Bool = false
+        voiceChord: Bool = false,
+        voiceTracking: VoiceTracking = .mic
     ) {
         self.states = states
         self.actionKeys = actionKeys
@@ -327,6 +332,7 @@ public struct Preferences: Equatable, Sendable {
         self.holdAttention = holdAttention
         self.maxHoldSeconds = maxHoldSeconds
         self.voiceChord = voiceChord
+        self.voiceTracking = voiceTracking
     }
 
     // MARK: - typed accessors
@@ -540,6 +546,10 @@ extension Preferences {
         }
         if let value = json["maxHoldSeconds"] as? Int { result.maxHoldSeconds = value }
         if let value = json["voiceChord"] as? Bool { result.voiceChord = value }
+        if let raw = json["voiceTracking"] as? String,
+           let tracking = VoiceTracking(rawValue: raw) {
+            result.voiceTracking = tracking
+        }
 
         return result
     }
@@ -636,6 +646,7 @@ extension Preferences {
             "holdAttention": holdAttention,
             "maxHoldSeconds": maxHoldSeconds,
             "voiceChord": voiceChord,
+            "voiceTracking": voiceTracking.rawValue,
         ]
     }
 }

@@ -87,22 +87,26 @@ final class BoardController: ObservableObject {
         return voice.isActive()
     }
 
-    private func setVoice(_ active: Bool, why: String) {
+    private func setVoice(_ active: Bool, why: String, tracking: VoiceTracking = .mic) {
         let was = voiceIsActive
         voiceGraceTask?.cancel()
         if active {
-            voice.begin()
-            // A mic already running counts as confirmation now: dictation joining an
-            // ongoing recording cannot flip a flag that is already up, so this is the
-            // only chance to see it. The cost is the old degraded bounds if the tap
-            // failed — never worse than the belief-only version.
-            if micActivity.isRunning { _ = voice.micChanged(running: true) }
-            scheduleVoiceGraceSweep()
-            Log.write(
-                voice.micConfirmed
-                    ? "voice: on (\(why), mic already running)"
-                    : "voice: believed (\(why)) — awaiting mic"
-            )
+            voice.begin(tracking: tracking)
+            if tracking == .mic {
+                // A mic already running counts as confirmation now: dictation joining an
+                // ongoing recording cannot flip a flag that is already up, so this is the
+                // only chance to see it. The cost is the old degraded bounds if the tap
+                // failed — never worse than the belief-only version.
+                if micActivity.isRunning { _ = voice.micChanged(running: true) }
+                scheduleVoiceGraceSweep()
+                Log.write(
+                    voice.micConfirmed
+                        ? "voice: on (\(why), mic already running)"
+                        : "voice: believed (\(why)) — awaiting mic"
+                )
+            } else {
+                Log.write("voice: on (\(why), session)")
+            }
         } else {
             voice.end()
             Log.write("voice: off (\(why))")
@@ -535,12 +539,16 @@ final class BoardController: ObservableObject {
             let canHold = BoardLayout.cells.contains { $0.isAction && $0.id == key }
             if shortcut.mode == .hold, canHold {
                 pushToTalk.begin(shortcut, key: key)
-                if shortcut.voice, pushToTalk.isHeld { setVoice(true, why: "shortcut hold") }
+                if shortcut.voice, pushToTalk.isHeld {
+                    setVoice(true, why: "shortcut hold", tracking: shortcut.voiceTracking)
+                }
             } else {
                 if shortcut.mode == .hold { Log.write("key \(key): cannot hold here — tapping") }
                 let result = Actions.press(shortcut)
                 Log.write(result.ok ? "key \(key): sent \(shortcut.label)" : "key \(key): \(result.detail)")
-                if result.ok, shortcut.voice { setVoice(!voiceIsActive, why: "shortcut") }
+                if result.ok, shortcut.voice {
+                    setVoice(!voiceIsActive, why: "shortcut", tracking: shortcut.voiceTracking)
+                }
             }
 
         case .newtab:
@@ -558,7 +566,9 @@ final class BoardController: ObservableObject {
                     : "key \(key): \(result.detail)"
             )
             // The same tap starts and stops it, so the belief flips with the key.
-            if result.ok { setVoice(!voiceIsActive, why: "tapped") }
+            if result.ok {
+                setVoice(!voiceIsActive, why: "tapped", tracking: model.preferences.voiceTracking)
+            }
 
         case .voiceTalk:
             // The release edge ends it — see PushToTalk for why this is never trusted
@@ -568,7 +578,9 @@ final class BoardController: ObservableObject {
         case .voiceToggle:
             let result = Actions.toggleVoice()
             Log.write(result.ok ? "key \(key): toggled voice" : "key \(key): \(result.detail)")
-            if result.ok { setVoice(!voiceIsActive, why: "/voice") }
+            if result.ok {
+                setVoice(!voiceIsActive, why: "/voice", tracking: model.preferences.voiceTracking)
+            }
 
         case .popover:
             openMenuBarPopover()

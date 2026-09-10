@@ -251,6 +251,12 @@ public enum KeyAction: String, CaseIterable, Sendable, Codable {
 
     public var needsSnippetText: Bool { self == .snippet }
     public var needsShortcut: Bool { self == .shortcut }
+    public var isBuiltInVoice: Bool {
+        switch self {
+        case .voiceTap, .voiceTalk, .voiceToggle: true
+        default: false
+        }
+    }
 
     /**
      What the joystick can usefully be bound to.

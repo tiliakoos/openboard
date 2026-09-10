@@ -93,4 +93,29 @@ func runVoiceSignalTests() {
         expectEqual(signal.isActive(now: t0.addingTimeInterval(10)), false)
         expect(signal.isAwaitingMic(now: t0.addingTimeInterval(10)))
     }
+
+    test("session tracking lights immediately and ignores mic stop") {
+        var signal = VoiceSignal()
+        signal.begin(now: t0, tracking: .session)
+        expect(signal.isActive(now: t0))
+        expectEqual(signal.micChanged(running: true, now: t0.addingTimeInterval(1)), nil)
+        expect(signal.isActive(now: t0.addingTimeInterval(1)))
+        expectEqual(signal.micChanged(running: false, now: t0.addingTimeInterval(30)), nil)
+        expect(signal.isActive(now: t0.addingTimeInterval(30)))
+        signal.end()
+        expectEqual(signal.isActive(now: t0.addingTimeInterval(30)), false)
+    }
+
+    test("session tracking still respects the limit") {
+        var signal = VoiceSignal()
+        signal.begin(now: t0, tracking: .session)
+        expect(signal.isActive(now: t0.addingTimeInterval(179)))
+        expectEqual(signal.isActive(now: t0.addingTimeInterval(180)), false)
+    }
+
+    test("session tracking does not await the mic") {
+        var signal = VoiceSignal()
+        signal.begin(now: t0, tracking: .session)
+        expectEqual(signal.isAwaitingMic(now: t0.addingTimeInterval(1)), false)
+    }
 }
