@@ -41,12 +41,18 @@ public struct Shortcut: Equatable, Sendable {
     public var modifiers: Set<Modifier>
     public var key: String
     public var mode: Mode
+    /// When set, a successful press starts the voice belief so the ring can spin once
+    /// the mic is running. Gated by Colors → Spin while dictating.
+    public var voice: Bool
 
-    public init(keyCode: Int, modifiers: Set<Modifier> = [], key: String, mode: Mode = .tap) {
+    public init(
+        keyCode: Int, modifiers: Set<Modifier> = [], key: String, mode: Mode = .tap, voice: Bool = false
+    ) {
         self.keyCode = keyCode
         self.modifiers = modifiers
         self.key = key
         self.mode = mode
+        self.voice = voice
     }
 
     /// What push-to-talk holds: space, no modifiers.
@@ -71,6 +77,7 @@ public struct Shortcut: Equatable, Sendable {
         modifiers = Set(names.compactMap(Modifier.init(rawValue:)))
         key = json["key"] as? String ?? ""
         mode = (json["mode"] as? String).flatMap(Mode.init(rawValue:)) ?? .tap
+        voice = json["voice"] as? Bool ?? false
     }
 
     /// Modifiers written in `allCases` order, so a save never reorders the file.
@@ -80,6 +87,7 @@ public struct Shortcut: Equatable, Sendable {
             "modifiers": Modifier.allCases.filter(modifiers.contains).map(\.rawValue),
             "key": key,
             "mode": mode.rawValue,
+            "voice": voice,
         ]
     }
 }

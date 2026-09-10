@@ -454,7 +454,9 @@ final class BoardController: ObservableObject {
             if key == "ENC_CLK" {
                 encoderReleased()
             } else if pushToTalk.heldBy == key {
+                let voiceShortcut = model.preferences.shortcuts[key]?.voice == true
                 pushToTalk.end()
+                if voiceShortcut { setVoice(false, why: "shortcut released") }
                 Task { await paint() }
             }
         case let .scroll(lines):
@@ -533,10 +535,12 @@ final class BoardController: ObservableObject {
             let canHold = BoardLayout.cells.contains { $0.isAction && $0.id == key }
             if shortcut.mode == .hold, canHold {
                 pushToTalk.begin(shortcut, key: key)
+                if shortcut.voice, pushToTalk.isHeld { setVoice(true, why: "shortcut hold") }
             } else {
                 if shortcut.mode == .hold { Log.write("key \(key): cannot hold here — tapping") }
                 let result = Actions.press(shortcut)
                 Log.write(result.ok ? "key \(key): sent \(shortcut.label)" : "key \(key): \(result.detail)")
+                if result.ok, shortcut.voice { setVoice(!voiceIsActive, why: "shortcut") }
             }
 
         case .newtab:

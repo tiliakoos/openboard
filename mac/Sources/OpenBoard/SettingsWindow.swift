@@ -682,6 +682,7 @@ struct CapInspector: View {
             ShortcutRecorder(shortcut: recorded) { chord in
                 var next = chord
                 next.mode = recorded?.mode ?? .tap
+                next.voice = recorded?.voice ?? false
                 board.updatePreferences { $0.shortcuts[key] = next }
                 commands.bindingsChanged()
             }
@@ -703,6 +704,27 @@ struct CapInspector: View {
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
         }
+        if recorded != nil {
+            Toggle(isOn: shortcutVoiceBinding(key)) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Treat as dictation").font(.system(size: 12.5))
+                    Text("Ring spins once the mic starts. Silence it under Colors → Spin while dictating.")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(.switch)
+            .padding(.top, 4)
+        }
+    }
+
+    private func shortcutVoiceBinding(_ key: String) -> Binding<Bool> {
+        Binding(
+            get: { board.preferences.shortcuts[key]?.voice ?? false },
+            set: { voice in
+                board.updatePreferences { $0.shortcuts[key]?.voice = voice }
+                commands.bindingsChanged()
+            }
+        )
     }
 
     private func shortcutModeBinding(_ key: String) -> Binding<Shortcut.Mode> {
