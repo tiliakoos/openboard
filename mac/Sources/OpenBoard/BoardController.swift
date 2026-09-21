@@ -1759,6 +1759,18 @@ final class BoardController: ObservableObject {
         Task { await paint() }
     }
 
+    /// Put a session on the key `delta` places away, swapping with whatever is there.
+    /// The registry decides; this logs, publishes and paints — same shape as `release`.
+    func move(slot: Int, by delta: Int) {
+        let target = slot + delta
+        guard let entry = registry.entry(forSlot: slot),
+              registry.move(sessionID: entry.sessionID, toSlot: target)
+        else { return }
+        Log.write("moved slot \(slot) -> \(target) (\(entry.sessionID.prefix(8)))")
+        publish()
+        Task { await paint() }
+    }
+
     func forgetAllSessions() {
         registry.reset()
         publish()

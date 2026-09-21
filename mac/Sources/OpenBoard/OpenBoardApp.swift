@@ -77,6 +77,8 @@ struct BoardCommands: Sendable {
     var playCountdown: @MainActor () -> Void = {}
     /// Free one key. The session keeps running — this forgets it, it does not stop it.
     var release: @MainActor (Int) -> Void = { _ in }
+    /// Move the session on a key up (-1) or down (+1) one key, swapping with what is there.
+    var move: @MainActor (Int, Int) -> Void = { _, _ in }
     /// Open the settings window, or bring it forward.
     var openSettings: @MainActor () -> Void = {}
     /// Open guided setup. Separate from openSettings because the popover offers it
@@ -207,6 +209,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         },
         playCountdown: { [weak self] in self?.controller?.playCountdown() },
         release: { [weak self] slot in self?.controller?.release(slot: slot) },
+        move: { [weak self] slot, delta in self?.controller?.move(slot: slot, by: delta) },
         openSettings: { [weak self] in self?.showMainWindow() },
         openSetup: { [weak self] in self?.showSetup() },
         dismissMenu: { [weak self] in self?.controller?.dismissMenuBarPopover() },

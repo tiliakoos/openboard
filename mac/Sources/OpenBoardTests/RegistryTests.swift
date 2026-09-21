@@ -195,6 +195,75 @@ func runRegistryTests() {
         expect(rows[1].entry == nil)
     }
 
+    // MARK: - moving
+
+    test("moving to a free key frees the old one, and the next session lands there") {
+        var registry = SessionRegistry()
+        _ = registry.claim(sessionID: "a", pid: 1, isAlive: alwaysAlive)
+        expect(registry.move(sessionID: "a", toSlot: 4))
+        expectEqual(registry.entry(forSession: "a")?.slot, 4)
+        expect(registry.entry(forSlot: 1) == nil)
+        let next = registry.claim(sessionID: "b", pid: 2, isAlive: alwaysAlive)
+        expectEqual(next.entry?.slot, 1)
+    }
+
+    test("moving onto an occupied key swaps the two and leaves the rest alone") {
+        var registry = SessionRegistry()
+        for i in 1...6 { _ = registry.claim(sessionID: "s\(i)", pid: i, isAlive: alwaysAlive) }
+        expect(registry.move(sessionID: "s3", toSlot: 2))
+        expectEqual(registry.entry(forSession: "s3")?.slot, 2)
+        expectEqual(registry.entry(forSession: "s2")?.slot, 3)
+        for i in [1, 4, 5, 6] { expectEqual(registry.entry(forSession: "s\(i)")?.slot, i) }
+        expectEqual(registry.entries.count, 6)
+    }
+
+    test("a move changes the key and nothing else") {
+        // Not `updatedAt`: a move is not activity, and bumping it would reset
+        // done-decay and the stale window. Not `claimSeq`: eviction is about age.
+        var registry = SessionRegistry()
+        let then = Date(timeIntervalSince1970: 1_000)
+        _ = registry.claim(sessionID: "a", pid: 1, now: then, isAlive: alwaysAlive)
+        _ = registry.claim(sessionID: "b", pid: 2, now: then, isAlive: alwaysAlive)
+        registry.setState(sessionID: "b", to: .awaiting, pendingTool: "Bash", now: then)
+        let before = registry.entries
+        expect(registry.move(sessionID: "b", toSlot: 1), "an awaiting session may be moved")
+        for entry in before {
+            guard let after = registry.entry(forSession: entry.sessionID) else {
+                expect(false, "\(entry.sessionID) vanished")
+                continue
+            }
+            expectEqual(after.claimSeq, entry.claimSeq)
+            expectEqual(after.updatedAt, entry.updatedAt)
+            expectEqual(after.state, entry.state)
+            expectEqual(after.pendingTool, entry.pendingTool)
+        }
+    }
+
+    test("a moved tab hands its key to the same tab's next session") {
+        // The same-host rule keys on tty, not on slot number, so it follows the move.
+        var registry = SessionRegistry()
+        _ = registry.claim(sessionID: "a", pid: 1, tty: "/dev/ttys001", isAlive: alwaysAlive)
+        _ = registry.claim(sessionID: "b", pid: 2, tty: "/dev/ttys002", isAlive: alwaysAlive)
+        expect(registry.move(sessionID: "a", toSlot: 5))
+        registry.markEnded(sessionID: "a")
+        let cleared = registry.claim(
+            sessionID: "a2", pid: 1, tty: "/dev/ttys001", isAlive: alwaysAlive
+        )
+        expectEqual(cleared.mode, .sameHost)
+        expectEqual(cleared.entry?.slot, 5)
+    }
+
+    test("a move to an unknown session or a key off the board is refused") {
+        var registry = SessionRegistry()
+        _ = registry.claim(sessionID: "a", pid: 1, isAlive: alwaysAlive)
+        let before = registry.entries
+        expect(!registry.move(sessionID: "ghost", toSlot: 2))
+        expect(!registry.move(sessionID: "a", toSlot: 0))
+        expect(!registry.move(sessionID: "a", toSlot: 7))
+        expect(registry.move(sessionID: "a", toSlot: 1), "its own key is a no-op, not a failure")
+        expectEqual(registry.entries, before)
+    }
+
     // MARK: - event mapping
 
     test("hook events map to the states the Node version used") {

@@ -225,7 +225,9 @@ struct PopoverView: View {
                     slot: slot,
                     capID: board.caps[slot.key],
                     jump: { commands.jump(slot.slot) },
-                    release: { commands.release(slot.slot) }
+                    release: { commands.release(slot.slot) },
+                    moveUp: { commands.move(slot.slot, -1) },
+                    moveDown: { commands.move(slot.slot, 1) }
                 )
             }
         }
@@ -386,35 +388,56 @@ struct SessionRow: View {
     let capID: String?
     var jump: () -> Void = {}
     var release: () -> Void = {}
+    var moveUp: () -> Void = {}
+    var moveDown: () -> Void = {}
     @State private var hovering = false
 
-    private var showsRelease: Bool { slot.isOccupied && hovering }
+    private var showsControls: Bool { slot.isOccupied && hovering }
 
     var body: some View {
-        // The release control is a *sibling* of the row button, not a child. Nested
+        // The hover controls are *siblings* of the row button, not children. Nested
         // buttons on macOS can deliver the click to both, which here would free the key
         // and jump to the session at the same time.
         ZStack(alignment: .trailing) {
             Button(action: jump) { rowContent }
                 .buttonStyle(HoverRowStyle())
                 // Not `.disabled`: a disabled button stops reporting hover, and the
-                // release control's visibility depends on it.
+                // controls' visibility depends on it.
                 .allowsHitTesting(slot.isOccupied)
 
-            if showsRelease {
-                Button(action: release) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 7)
-                        .contentShape(.rect)
+            if showsControls {
+                // Hover sits on the row *position* — `SlotView.id` is the slot — so after
+                // a move the pointer is over whatever now occupies this row. Moving two
+                // keys is two hovers, not two clicks in place; with six keys that is fine.
+                HStack(spacing: 0) {
+                    if slot.slot > 1 {
+                        control("chevron.up", action: moveUp,
+                                help: "Move this session up one key. Whatever is on that key swaps places.")
+                    }
+                    if slot.slot < BoardLayout.slotCount {
+                        control("chevron.down", action: moveDown,
+                                help: "Move this session down one key. Whatever is on that key swaps places.")
+                    }
+                    control("xmark.circle.fill", action: release,
+                            help: "Stop tracking this session and free its key. The session keeps running.")
                 }
-                .buttonStyle(.plain)
-                .help("Stop tracking this session and free its key. The session keeps running.")
+                .padding(.trailing, 3)
             }
         }
         .onHover { hovering = $0 }
+    }
+
+    private func control(_ symbol: String, action: @escaping () -> Void, help: String) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 7)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 
     private var rowContent: some View {
@@ -458,10 +481,10 @@ struct SessionRow: View {
 
             Spacer(minLength: 6)
 
-            // Hidden rather than removed while the release control is showing, so the
+            // Hidden rather than removed while the hover controls are showing, so the
             // row does not reflow under the pointer at the moment of clicking.
             if let state = slot.state {
-                StateBadge(state: state).opacity(showsRelease ? 0 : 1)
+                StateBadge(state: state).opacity(showsControls ? 0 : 1)
             }
         }
         .padding(.horizontal, 8)

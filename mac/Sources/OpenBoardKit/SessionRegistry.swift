@@ -444,6 +444,33 @@ public struct SessionRegistry: Sendable, Equatable {
         return entries.count != before
     }
 
+    /**
+     Put a session on a different key.
+
+     Slots are sticky, which is right until two sessions in one project land either side
+     of another project's key. This is the manual fix: the session takes `toSlot`, and
+     whatever held `toSlot` takes the vacated key — a swap, so the other four keys keep
+     their muscle memory. Moving onto a free key simply frees the old one, which the
+     next new session then takes (`pickSlot` prefers an unused slot).
+
+     Changes `slot` and nothing else. Not `updatedAt`: a move is not activity, and
+     bumping it would reset done-decay and the stale window. Not `claimSeq`: eviction
+     order is about age, not position. An `awaiting` session may be moved — the
+     "never take an attention key" rule is about eviction, and a swap loses nothing.
+     */
+    @discardableResult
+    public mutating func move(sessionID: String, toSlot: Int) -> Bool {
+        guard (1...slotCount).contains(toSlot),
+              let index = entries.firstIndex(where: { $0.sessionID == sessionID })
+        else { return false }
+        let fromSlot = entries[index].slot
+        if let other = entries.firstIndex(where: { $0.slot == toSlot }) {
+            entries[other].slot = fromSlot
+        }
+        entries[index].slot = toSlot
+        return true
+    }
+
     /// Forget everything. The registry is ephemeral, so this is the whole operation.
     public mutating func reset() {
         entries.removeAll()
