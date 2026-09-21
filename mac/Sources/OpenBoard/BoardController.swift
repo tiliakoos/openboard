@@ -1135,6 +1135,14 @@ final class BoardController: ObservableObject {
         // arrives with pid=nil and every "jump to slot N" reports noWindow.
         let hookPID = event.environment["CLAUDE_PID"].flatMap(Int.init)
             ?? event.hookPPID.flatMap(Self.claudePID(fromAncestryOf:))
+        // A headless probe is not a session anyone is sitting in front of, so it gets
+        // no key. Asked once, for a session the board has not seen — `ps` is not free,
+        // and a session already on the board has already passed this.
+        if registry.entry(forSession: sessionID) == nil, let hookPID,
+           ProcessAncestry.host(ofPID: hookPID) == .headless {
+            Log.write("hook \(event.name): refused (headless-host pid=\(hookPID))")
+            return
+        }
         if registry.adoptRealSessionID(
             sessionID,
             pid: hookPID,

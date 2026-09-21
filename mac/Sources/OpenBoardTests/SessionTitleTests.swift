@@ -404,6 +404,18 @@ func runProcessAncestryTests() {
         expectEqual(ProcessAncestry.host(ofPID: 5000, parentOf: chain), .terminal)
     }
 
+    test("CodexBar's usage probe is recognised as headless") {
+        // The real chain, caught by a process watcher on 2026-09-21: CodexBar's
+        // watchdog helper drives `claude --session-id …` in a pty every 16 minutes,
+        // and the hooks report it as an ordinary `cli` session.
+        let chain = tree([
+            30402: (30401, "/Users/NickT/.local/bin/claude"),
+            30401: (64648, "/Applications/CodexBar.app/Contents/Helpers/CodexBarClaudeWatchdog"),
+            64648: (1, "/Applications/CodexBar.app/Contents/MacOS/CodexBar"),
+        ])
+        expectEqual(ProcessAncestry.host(ofPID: 30402, parentOf: chain), .headless)
+    }
+
     test("an unrecognised host is admitted, not guessed") {
         // iTerm, Ghostty, tmux, a launchd job. Claiming one of the two known hosts
         // would send a jump somewhere wrong.

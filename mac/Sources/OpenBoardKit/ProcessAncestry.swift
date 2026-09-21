@@ -22,6 +22,11 @@ public enum ProcessAncestry {
     public enum Host: String, Sendable, Equatable {
         case terminal
         case vscode
+        /// A helper driving `claude` in a pty with no human behind it. CodexBar's usage
+        /// probe does this every 16 minutes for about 15 seconds, and each run took the
+        /// lowest free key — so a second session in your project landed one key over.
+        /// It reports `cli` like any pty session; only the parent chain tells it apart.
+        case headless
         case unknown
     }
 
@@ -33,6 +38,7 @@ public enum ProcessAncestry {
         ("Code Helper", .vscode),
         ("/Applications/Utilities/Terminal.app", .terminal),
         ("Terminal.app", .terminal),
+        ("CodexBarClaudeWatchdog", .headless),
     ]
 
     /// Walk up from a process until one of the known hosts is recognised.

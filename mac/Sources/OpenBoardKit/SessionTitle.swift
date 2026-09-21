@@ -276,6 +276,9 @@ public enum SessionOrigin: String, Sendable, Equatable {
         switch host {
         case .vscode: return .vscode
         case .terminal: return .terminal
+        // A headless host is refused before it reaches the board, so this is only
+        // ever asked for exhaustiveness; a pty with no human behind it is a CLI.
+        case .headless: return .cli
         case .unknown: return tty != nil ? .terminal : .cli
         }
     }
