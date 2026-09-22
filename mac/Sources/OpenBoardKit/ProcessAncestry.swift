@@ -19,14 +19,23 @@ import Foundation
  asking per repaint.
  */
 public enum ProcessAncestry {
-    public enum Host: String, Sendable, Equatable {
+    public enum Host: String, Sendable, Equatable, CaseIterable {
         case terminal
+        /// iTerm2. Jumping there has worked for a while — `Focus.focusITerm2` matches on
+        /// tty like Terminal does — but the *host* was never identified, so a session in
+        /// it was labelled "Terminal" and reached only because the tty walk falls
+        /// through to iTerm2 after Terminal misses. Named here so the row can say
+        /// iTerm2, and so it can be turned off on its own.
+        case iterm2
         case vscode
         /// A helper driving `claude` in a pty with no human behind it. CodexBar's usage
         /// probe does this every 16 minutes for about 15 seconds, and each run took the
         /// lowest free key — so a second session in your project landed one key over.
         /// It reports `cli` like any pty session; only the parent chain tells it apart.
         case headless
+        /// A cmux surface — a tab or split in the cmux terminal. Reached through cmux's
+        /// own socket rather than by tty; see `Cmux`.
+        case cmux
         case unknown
     }
 
@@ -39,6 +48,16 @@ public enum ProcessAncestry {
         ("/Applications/Utilities/Terminal.app", .terminal),
         ("Terminal.app", .terminal),
         ("CodexBarClaudeWatchdog", .headless),
+        // iTerm2 ships in a bundle called `iTerm.app` whose executable is `iTerm2`.
+        // Both spellings are matched because the name is not ours and has changed once
+        // already; neither can collide with Apple's `Terminal.app`.
+        ("iTerm.app", .iterm2),
+        ("iTerm2.app", .iterm2),
+        // The bundle, not the executable name. `cmux` is also the name of the CLI the
+        // app puts on every cmux terminal's PATH, and an ancestor called `cmux` from
+        // somewhere else entirely is not evidence of anything; a path *through the
+        // bundle* is, whichever binary inside it is running.
+        ("cmux.app", .cmux),
     ]
 
     /// Walk up from a process until one of the known hosts is recognised.

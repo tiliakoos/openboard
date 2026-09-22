@@ -26,8 +26,25 @@ struct OpenBoardApp: App {
     /// dispatcher all drive the same controller through the same closures.
     private var commands: BoardCommands { delegate.commands }
 
+    /**
+     Whether the status item is in the menu bar.
+
+     Without this binding, `MenuBarExtra` gives its status item
+     `.terminationOnRemoval`: the moment the item leaves the menu bar — ⌘-dragged off,
+     or hidden by macOS 26's menu bar management — the app quits. AppKit then records
+     the item as not visible, restores it hidden on the next launch, and SwiftUI quits
+     again about a second in, with nothing in the log and no crash report. The app
+     could not be opened at all until `NSStatusItem Visible…` was cleared by hand, and
+     even that did not hold once Control Center was the one hiding it.
+
+     With the binding, removal flips this to false instead of quitting, and starting at
+     `true` re-inserts the item on every launch. The pad, the hooks and the socket keep
+     running either way — the icon is the app's shadow, not the app.
+     */
+    @State private var isInMenuBar = true
+
     var body: some Scene {
-        MenuBarExtra {
+        MenuBarExtra(isInserted: $isInMenuBar) {
             PopoverView()
                 .environmentObject(delegate.board)
                 .environmentObject(delegate.battery)
@@ -176,6 +193,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var mainWindow: MainWindowController?
     /// Guided setup. Also kept, so closing and reopening does not lose the position.
     private(set) var setupWindow: SetupWindowController?
+    /// The simulated pad's face, when launched with `OPENBOARD_VIRTUAL_PAD=1`.
+    private(set) var virtualPadWindow: VirtualPadWindowController?
 
     /**
      Everything the UI can ask for, in one place.
@@ -250,10 +269,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // first window on screen with an empty menu bar for a frame.
         AppMenu.install(target: self, openSettings: #selector(showMainWindow))
 
-        let created = BoardController(model: board)
+        /*
+         `OPENBOARD_VIRTUAL_PAD=1` swaps the hardware for a simulated pad and puts its
+         face on screen. Everything above the transport is the same program: the same
+         framed bytes go out, the same JSON lines come back. For working on the app —
+         and finishing setup — without a board on the desk.
+
+         An environment variable rather than a setting because it chooses what the
+         controller is *built with*, and a toggle that only takes effect on relaunch
+         is a setting that looks broken.
+         */
+        let virtual: VirtualPad? =
+            ProcessInfo.processInfo.environment["OPENBOARD_VIRTUAL_PAD"] == "1"
+                ? VirtualPad() : nil
+
+        let created: BoardController
+        if let virtual {
+            Log.write("virtual pad: driving the simulator, not hardware")
+            created = BoardController(
+                model: board, device: virtual, surveyPad: VirtualPad.survey
+            )
+            virtualPadWindow = VirtualPadWindowController(pad: virtual)
+        } else {
+            created = BoardController(model: board)
+        }
         created.openSettings = { [weak self] in self?.showMainWindow() }
         controller = created
         created.start()
+        virtualPadWindow?.show()
         battery.start()
 
         /*

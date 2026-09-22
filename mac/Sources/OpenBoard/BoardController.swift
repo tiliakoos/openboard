@@ -23,7 +23,11 @@ import SwiftUI
 @MainActor
 final class BoardController: ObservableObject {
     private let model: BoardModel
-    private let device = HIDDevice()
+    private let device: PadTransport
+    /// `HIDDevice.survey()` unless a virtual pad answers instead. Injected separately
+    /// from the transport because the real one is static — it asks the bus, not a
+    /// handle — and a protocol cannot carry it.
+    private let surveyPad: @Sendable () -> HIDDevice.Survey
     private let hooks = HookServer()
 
     private var registry = SessionRegistry()
@@ -35,12 +39,17 @@ final class BoardController: ObservableObject {
     private var countdown: CountdownPlayer?
     private lazy var pushToTalk = PushToTalk(log: { Log.write($0) })
     private var focusWatcher: FocusWatcher?
-    /// What is in front of you — a Terminal tab by tty, or a VS Code window by title.
-    /// Drives `viewing`, and is never written into the registry — see `Viewing`.
+    /// What is in front of you — a Terminal tab by tty, a cmux surface by id, or a VS
+    /// Code window by title. Drives `viewing`, and is never written into the registry —
+    /// see `Viewing`.
     private var focused: FocusedSurface = .elsewhere
     /// Tab titles by tty. Claude Code writes a summary of the session there, and it
     /// stays current as the work changes — unlike anything in the transcript.
     private var terminalTitles: [String: String] = [:]
+    /// cmux surfaces by the pid running in them. One read answers both questions the
+    /// board asks of cmux — what a session's surface is, and what that surface is
+    /// called — so they cannot disagree with each other.
+    private var cmuxSurfaces: [Int: Cmux.Surface] = [:]
     /// How to show the settings window. Injected by the delegate that owns it.
     var openSettings: (() -> Void)?
     /// Press versus press-and-hold on the dial.
@@ -57,6 +66,11 @@ final class BoardController: ObservableObject {
     /// Last logged values, so a 10s poll does not fill the log with "still fine".
     private var lastOpenLog: String?
     private var lastPresenceLog: String?
+    private var lastCmuxLog: String?
+    /// Processes already found to belong to a muted surface, so the walk up the process
+    /// tree is paid once per session rather than once per hook. Cleared whenever the
+    /// setting changes, because the answer then does too.
+    private var mutedPIDs: Set<Int> = []
     private var lastPaintLog: String?
     private var lastAmbientLog: String?
     private var lastPresenceReason: String?
@@ -83,7 +97,9 @@ final class BoardController: ObservableObject {
 
     private var voiceIsActive: Bool {
         // A held custom shortcut is not dictation; only the voice key's hold counts.
-        if let key = pushToTalk.heldBy, model.actions[key] == .voiceTalk { return true }
+        // The hold says so itself: looking its key up in the actions map instead
+        // missed the long-press keys, whose "ENC.long" is not a key the map has.
+        if pushToTalk.isDictation { return true }
         return voice.isActive()
     }
 
@@ -138,8 +154,14 @@ final class BoardController: ObservableObject {
     /// While present this is drift repair, and can be lazy.
     private let presentInterval: Duration = .seconds(10)
 
-    init(model: BoardModel) {
+    init(
+        model: BoardModel,
+        device: PadTransport = HIDDevice(),
+        surveyPad: @escaping @Sendable () -> HIDDevice.Survey = HIDDevice.survey
+    ) {
         self.model = model
+        self.device = device
+        self.surveyPad = surveyPad
     }
 
     /// Re-read anything the settings window can change.
@@ -148,6 +170,16 @@ final class BoardController: ObservableObject {
     /// cleared so a rebind is not swallowed by the previous key's window.
     func bindingsChanged() {
         applyPreferences()
+
+        // Muting a surface is retroactive: the sessions already holding its keys give
+        // them up here, before the repaint below, so the switch has a visible effect
+        // rather than one that arrives whenever those sessions happen to end.
+        //
+        // The cache goes first: a surface switched back on must be able to claim again,
+        // and a pid remembered as muted would keep being refused.
+        mutedPIDs.removeAll()
+        sweepUnlistened()
+        publish()
 
         // Every write saves immediately; the debounce lives in the store, so dragging
         // a slider costs one file write rather than one per frame.
@@ -266,10 +298,39 @@ final class BoardController: ObservableObject {
      */
     func reconnect() {
         let found = Discovery.runningSessions()
-        let added = registry.reconnect(found)
-        Log.write("reconnect: \(found.count) running session(s), \(added) added")
+        // Counted rather than inferred: "9 found, 9 added" and "9 found, 6 added, 3 not
+        // listened to" are the same line without this, and the difference is whether a
+        // switch in Settings is doing anything at all.
+        var skipped = 0
+        let added = registry.reconnect(found, isListening: { host in
+            let listening = self.model.preferences.listens(to: host)
+            if !listening { skipped += 1 }
+            return listening
+        })
+        Log.write(
+            "reconnect: \(found.count) running session(s), \(added) added"
+                + (skipped > 0 ? ", \(skipped) not listened to" : "")
+        )
+        // The backfill inside `reconnect` is the first time a restored entry's host is
+        // known, so a muted surface can only be recognised here — not when the switch
+        // was flipped.
+        sweepUnlistened()
         publish()
         Task { await paint() }
+    }
+
+    /// Free any key held by a surface that is no longer listened to, and say so.
+    ///
+    /// Called after discovery and after a settings edit, which are the two moments the
+    /// answer can change: one learns a host, the other changes the rule.
+    private func sweepUnlistened() {
+        let freed = registry.releaseUnlistened { self.model.preferences.listens(to: $0) }
+        guard !freed.isEmpty else { return }
+        Log.write(
+            "surfaces: freed slot\(freed.count == 1 ? "" : "s") "
+                + freed.map(String.init).joined(separator: ", ")
+                + " — not listening to that surface"
+        )
     }
 
     /// Push configured values into the parts that hold their own copies.
@@ -555,6 +616,22 @@ final class BoardController: ObservableObject {
             let result = Actions.newTerminalTab()
             Log.write(result.ok ? "key \(key): opened a Terminal tab" : "key \(key): \(result.detail)")
 
+        case .newtabCmux:
+            let result = Actions.newCmuxTab()
+            Log.write(
+                result.ok
+                    ? "key \(key): opened a cmux tab — \(result.detail)"
+                    : "key \(key): \(result.detail)"
+            )
+
+        case .newWorkspaceCmux:
+            let result = Actions.newCmuxWorkspace()
+            Log.write(
+                result.ok
+                    ? "key \(key): opened a cmux workspace — \(result.detail)"
+                    : "key \(key): \(result.detail)"
+            )
+
         case .voiceTap:
             // The chord invokes `voice:pushToTalk` directly and types nothing; space
             // is the fallback that also types spaces when the input is not empty.
@@ -573,7 +650,7 @@ final class BoardController: ObservableObject {
         case .voiceTalk:
             // The release edge ends it — see PushToTalk for why this is never trusted
             // to happen on its own.
-            pushToTalk.begin(key: key)
+            pushToTalk.begin(key: key, dictation: true)
 
         case .voiceToggle:
             let result = Actions.toggleVoice()
@@ -700,6 +777,61 @@ final class BoardController: ObservableObject {
         publish()
     }
 
+    /// Re-read cmux's surfaces, and republish only if something changed.
+    ///
+    /// On the same cycle and for the same reason as the tab titles: it is a subprocess
+    /// per call, and what it answers — which surface a session is in, and what that
+    /// surface is called — changes when someone moves a tab or a session changes topic.
+    ///
+    /// Skipped entirely when cmux is not running, so a user who does not have it never
+    /// pays for a process spawn every few seconds.
+    private func refreshCmuxSurfaces() async {
+        guard Focus.isRunning(bundleID: Cmux.bundleID), let cli = Focus.cmuxCLI else {
+            guard !cmuxSurfaces.isEmpty else { return }
+            cmuxSurfaces = [:]
+            publish()
+            return
+        }
+        /*
+         Kept to the sessions on the board, not everything cmux is running.
+
+         cmux's tree holds every process in every surface — language servers,
+         `caffeinate`, whatever a session shelled out to a second ago — and on a working
+         machine that set changes several times a *second*. Storing all of it made the
+         "did anything change" comparison below true on almost every cycle, so the board
+         republished and rewrote the registry file continuously for churn no row could
+         ever display. Nothing reads this map except by a session's pid.
+        */
+        let sessionPIDs = Set(registry.entries.compactMap(\.pid))
+        let surfaces = await Task.detached { Cmux.surfaces(cli: cli) }.value
+            .filter { sessionPIDs.contains($0.key) }
+
+        /*
+         Logged on change, like `device present`.
+
+         What is worth reading is what the board resolved: which slot is in which
+         surface, and under what name. Those are the two things "the cmux row will not
+         jump" and "the cmux row has the wrong name" are asking about, and both are
+         otherwise invisible.
+        */
+        let placed = registry.entries
+            .sorted { $0.slot < $1.slot }
+            .compactMap { entry -> String? in
+                guard let pid = entry.pid, let surface = surfaces[pid] else { return nil }
+                let name = surface.title.flatMap(TerminalTitle.clean) ?? "unnamed"
+                return "\(entry.slot):\(pid)→\(surface.ref) “\(name)”"
+            }
+        lastCmuxLog = Log.changed(
+            "cmux", last: lastCmuxLog,
+            to: placed.isEmpty
+                ? "reachable, no session on the board is in it"
+                : placed.joined(separator: ", ")
+        )
+        guard surfaces != cmuxSurfaces else { return }
+        cmuxSurfaces = surfaces
+        publish()
+    }
+
     /**
      Whether this entry is the session in front of you.
 
@@ -713,6 +845,11 @@ final class BoardController: ObservableObject {
         switch focused {
         case let .terminal(tty):
             return entry.tty == tty
+        case let .cmux(surface):
+            // By pid, because that is the only thing both sides have: cmux does not
+            // expose a tty for a surface, and the registry does not know a surface id
+            // until this map is read.
+            return entry.pid.flatMap { cmuxSurfaces[$0]?.id } == surface
         case let .vscode(windowTitle):
             guard entry.entrypoint == "claude-vscode", let name else { return false }
             return WindowTitle.names(name, in: windowTitle)
@@ -721,11 +858,16 @@ final class BoardController: ObservableObject {
         }
     }
 
-    /// What the row calls this session — the tab title where Terminal offers one, and
+    /// What the row calls this session — the tab title where the host offers one, and
     /// Claude Code's own name otherwise. Shared by `publish` and the focus match so the
     /// two cannot disagree about what a session is called.
+    ///
+    /// cmux carries the same titles Terminal does, because it is Claude Code that writes
+    /// them; they arrive with the same spinner glyph in front and go through the same
+    /// `TerminalTitle.clean`.
     private func name(of entry: SessionRegistry.Entry) -> String? {
         entry.tty.flatMap { terminalTitles[$0] }
+            ?? entry.pid.flatMap { cmuxSurfaces[$0]?.title }.flatMap(TerminalTitle.clean)
             ?? SessionTitle.forSession(transcriptPath: entry.transcriptPath)
     }
 
@@ -734,6 +876,7 @@ final class BoardController: ObservableObject {
     private static func describe(_ surface: FocusedSurface) -> String {
         switch surface {
         case let .terminal(tty): return tty
+        case let .cmux(surface): return "cmux \(surface)"
         case let .vscode(windowTitle): return "vscode “\(windowTitle.prefix(60))”"
         case .elsewhere: return "elsewhere"
         }
@@ -1135,14 +1278,39 @@ final class BoardController: ObservableObject {
         // arrives with pid=nil and every "jump to slot N" reports noWindow.
         let hookPID = event.environment["CLAUDE_PID"].flatMap(Int.init)
             ?? event.hookPPID.flatMap(Self.claudePID(fromAncestryOf:))
-        // A headless probe is not a session anyone is sitting in front of, so it gets
-        // no key. Asked once, for a session the board has not seen — `ps` is not free,
-        // and a session already on the board has already passed this.
-        if registry.entry(forSession: sessionID) == nil, let hookPID,
-           ProcessAncestry.host(ofPID: hookPID) == .headless {
-            Log.write("hook \(event.name): refused (headless-host pid=\(hookPID))")
-            return
+
+        /*
+         A surface the board is not listening to gets no key, and neither does a
+         headless probe — `claude` driven in a pty with no human behind it (CodexBar's
+         usage probe does this every 16 minutes), which reports `cli` like any pty
+         session and is only told apart by its parent chain.
+
+         Placed here rather than in `Eligibility`, which is pure and answers from the
+         payload and the environment: which app *owns* a session is a question only the
+         process table can answer, and the hook payload cannot carry it. Placed before
+         the adoption and both claims below, so a muted session never takes a key it
+         would immediately have to give back.
+
+         Asked only for a session that is not already on the board, and remembered:
+         hooks arrive several times a minute per session, and every one of them would
+         otherwise pay for the walk up the process tree just to be refused again.
+        */
+        if registry.entry(forSession: sessionID) == nil, let pid = hookPID {
+            let host = mutedPIDs.contains(pid) ? nil : ProcessAncestry.host(ofPID: pid)
+            if host == .headless {
+                mutedPIDs.insert(pid)
+                Log.write("hook \(event.name): refused (headless-host pid=\(pid))")
+                return
+            }
+            if let host, !model.preferences.listens(to: host) {
+                mutedPIDs.insert(pid)
+            }
+            if mutedPIDs.contains(pid) {
+                Log.write("hook \(event.name): refused (not listening to that surface)")
+                return
+            }
         }
+
         if registry.adoptRealSessionID(
             sessionID,
             pid: hookPID,
@@ -1388,7 +1556,7 @@ final class BoardController: ObservableObject {
             var wasPresent: Bool?
             while !Task.isCancelled {
                 guard let self else { return }
-                let survey = HIDDevice.survey()
+                let survey = self.surveyPad()
                 let present = survey.found
                 self.model.apply(isWired: survey.isWired)
                 // Which pad, not just whether one is there: the name in the menu bar is
@@ -1414,6 +1582,7 @@ final class BoardController: ObservableObject {
                 }
 
                 await self.refreshTerminalTitles()
+                await self.refreshCmuxSurfaces()
                 await self.publishDeviceStatus(present: present)
                 try? await Task.sleep(for: present ? self.presentInterval : self.absentInterval)
             }
@@ -1814,6 +1983,8 @@ final class BoardController: ObservableObject {
                 origin: SessionOrigin.from(
                     entrypoint: entry.entrypoint, tty: entry.tty, host: entry.host
                 ),
+                pid: entry.pid,
+                cmuxSurface: entry.pid.flatMap { cmuxSurfaces[$0] },
                 entrypoint: entry.entrypoint,
                 isNamed: name != nil,
                 cwd: entry.cwd,
