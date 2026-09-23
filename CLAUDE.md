@@ -37,8 +37,9 @@ something that was merged there.
 outward-facing. Upstream also asks for an issue first on anything touching the *harness
 model*; build-script and UI changes need none.
 
-The full playbook, including the current PR status and the fork's history, lives in the
-Obsidian vault at `~/Documents/Obsidian_Vault/Projects/03_openboard/Fork Workflow.md`.
+The full playbook lives in the Obsidian vault at
+`~/Documents/Obsidian_Vault/Projects/03_openboard/fork-workflow.md`; PR status and the
+fork's history are in `status.md` beside it.
 
 ### Local signing, and why this build never auto-updates
 
