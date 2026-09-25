@@ -331,6 +331,30 @@ public enum SessionTranscript {
         }
         return nil
     }
+
+    /// The session id a transcript was continued in, from its trailing `continued-in` record.
+    public static func continuation(of path: String?) -> String? {
+        guard let path, let handle = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { try? handle.close() }
+        let size = (try? handle.seekToEnd()) ?? 0
+        try? handle.seek(toOffset: size > 65_536 ? size - 65_536 : 0)
+        guard let data = try? handle.readToEnd() else { return nil }
+        // Lossy decoding: the seek can land mid-codepoint, and a half line just fails to parse.
+        return continuation(inJSONL: String(decoding: data, as: UTF8.self))
+    }
+
+    public static func continuation(inJSONL text: String) -> String? {
+        var found: String?
+        for line in text.split(separator: "\n") where line.contains("\"continued-in\"") {
+            guard let data = line.data(using: .utf8),
+                  let record = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  record["type"] as? String == "continued-in",
+                  let id = record["continuedInSessionId"] as? String
+            else { continue }
+            found = id
+        }
+        return found
+    }
 }
 
 /**

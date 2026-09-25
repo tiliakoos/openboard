@@ -330,6 +330,33 @@ func runTranscriptLocateTests() {
         expect(registry.adoptRealSessionID("sid", pid: 77, tty: "/dev/ttys010", now: now))
         expectEqual(registry.entry(forSession: "sid")?.cwd, "/tmp/known")
     }
+
+    test("a continued-in record names the background session") {
+        // The bridge hands a conversation to a background process with a new session id
+        // and leaves this record at the tail of the interactive transcript.
+        let continued = #"{"type":"continued-in","sessionId":"old","continuedInSessionId":"bg-1"}"#
+        let other = #"{"type":"cost-state","sessionId":"old"}"#
+        expectEqual(SessionTranscript.continuation(inJSONL: [other, continued, other].joined(separator: "\n")), "bg-1")
+        expect(SessionTranscript.continuation(inJSONL: other) == nil)
+        expect(SessionTranscript.continuation(of: nil) == nil)
+        expect(SessionTranscript.continuation(of: "/nope/nothing.jsonl") == nil)
+    }
+
+    test("the last continued-in record wins") {
+        let first = #"{"type":"continued-in","continuedInSessionId":"bg-1"}"#
+        let second = #"{"type":"continued-in","continuedInSessionId":"bg-2"}"#
+        expectEqual(SessionTranscript.continuation(inJSONL: first + "\n" + second), "bg-2")
+    }
+
+    test("continuation reads the tail of a real file") {
+        let file = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ob-continued-\(UUID().uuidString).jsonl")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let padding = String(repeating: #"{"type":"pad"}"# + "\n", count: 8000)
+        let tail = #"{"type":"continued-in","continuedInSessionId":"bg-3"}"# + "\n"
+        try Data((padding + tail).utf8).write(to: file)
+        expectEqual(SessionTranscript.continuation(of: file.path), "bg-3")
+    }
 }
 
 /**
