@@ -178,6 +178,7 @@ func runAppPathsTests() {
                 "the helper does not look in \(relative) — hooks would land nowhere"
             )
         }
+        expect(source.contains("CLAUDE_CODE_SESSION_KIND"), "the helper must forward the session kind")
     }
 }
 
