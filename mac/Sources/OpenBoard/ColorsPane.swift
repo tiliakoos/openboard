@@ -30,6 +30,8 @@ struct ColorsPane: View {
     @Environment(\.boardCommands) private var commands
 
     private let showColumns = [GridItem(.adaptive(minimum: 210), spacing: 10)]
+    @State private var autoOffDraft = ""
+    @FocusState private var autoOffFocused: Bool
 
     // MARK: - how long a color stays
 
@@ -65,6 +67,25 @@ struct ColorsPane: View {
                 commands.bindingsChanged()
             }
         )
+    }
+
+    private var autoOffBinding: Binding<Bool> {
+        Binding(
+            get: { board.preferences.autoOffSeconds > 0 },
+            set: { on in
+                board.updatePreferences { $0.autoOffSeconds = on ? Preferences.default.autoOffSeconds : 0 }
+                autoOffDraft = AutoOff.label(board.preferences.autoOffSeconds)
+                commands.bindingsChanged()
+            }
+        )
+    }
+
+    private func commitAutoOff() {
+        if let seconds = AutoOff.seconds(from: autoOffDraft) {
+            board.updatePreferences { $0.autoOffSeconds = seconds }
+            commands.bindingsChanged()
+        }
+        autoOffDraft = AutoOff.label(board.preferences.autoOffSeconds)
     }
 
     // MARK: - the ring
@@ -255,6 +276,33 @@ struct ColorsPane: View {
                     : "Clears when answered, or after 15 minutes if it never is.",
                 isOn: holdAttentionBinding
             )
+
+            Divider().opacity(0.35)
+
+            holdToggle(
+                state: nil,
+                title: "Turn the lights off when idle",
+                detail: "After no key press and no status change. Never while a session waits for you.",
+                isOn: autoOffBinding
+            )
+
+            if board.preferences.autoOffSeconds > 0 {
+                HStack(spacing: 8) {
+                    Text("After")
+                        .font(.system(size: 11.5)).foregroundStyle(.secondary)
+                    TextField("m:ss", text: $autoOffDraft)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 11).monospaced())
+                        .frame(width: 56)
+                        .focused($autoOffFocused)
+                        .onSubmit(commitAutoOff)
+                        .onChange(of: autoOffFocused) { _, focused in if !focused { commitAutoOff() } }
+                    Text("minutes")
+                        .font(.system(size: 11.5)).foregroundStyle(.secondary)
+                }
+                .padding(.leading, 38)
+                .onAppear { autoOffDraft = AutoOff.label(board.preferences.autoOffSeconds) }
+            }
         }
         .padding(12)
         .background(.quaternary.opacity(0.3), in: .rect(cornerRadius: 10))
@@ -341,15 +389,16 @@ struct ColorsPane: View {
      `done` and `awaiting` have been set to.
      */
     private func holdToggle(
-        state: SessionState,
+        state: SessionState?,
         title: String,
         detail: String,
         isOn: Binding<Bool>
     ) -> some View {
-        let appearance = board.appearances[state] ?? state.defaultAppearance
+        let color = state.map { Color((board.appearances[$0] ?? $0.defaultAppearance).color) }
         return HStack(spacing: 10) {
+            // No state: a hollow dot, for a rule that turns lights off.
             Circle()
-                .fill(Color(appearance.color))
+                .fill(color ?? .clear)
                 .frame(width: 10, height: 10)
                 .overlay { Circle().strokeBorder(.black.opacity(0.2), lineWidth: 0.5) }
             VStack(alignment: .leading, spacing: 1) {

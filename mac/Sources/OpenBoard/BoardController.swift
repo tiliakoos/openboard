@@ -149,6 +149,11 @@ final class BoardController: ObservableObject {
     /// What `paint` last sent the ring. Cleared by anything else that writes it.
     private var lastRing: CodexProtocol.LightingConfig?
     private var lastRingAt: Date = .distantPast
+    /// Last pad input or status change. See `AutoOff`.
+    private var lastActivity = Date()
+    private var isDark = false
+    private var statusAskedAt: Date = .distantPast
+    private var lastStatusLog: String?
     private var runningShow: String?
 
 
@@ -479,6 +484,10 @@ final class BoardController: ObservableObject {
                 }
                 return
             }
+            if let status = PadStatus.parse(line) {
+                Task { @MainActor in self?.apply(status) }
+                return
+            }
 
             guard let event = KeyEvent.parse(line) else { return }
             Task { @MainActor in self?.handle(key: event) }
@@ -495,6 +504,7 @@ final class BoardController: ObservableObject {
         guard let direction = joystick.update(angle: angle, deflection: deflection) else {
             return
         }
+        noteActivity()
         guard let action = model.preferences.joystick.action(for: direction) else {
             Log.write("stick \(direction.rawValue): unbound")
             return
@@ -507,6 +517,7 @@ final class BoardController: ObservableObject {
     }
 
     private func handle(key event: KeyEvent) {
+        noteActivity()
         guard let intent = dispatcher.intent(for: event) else { return }
         switch intent {
         case let .jump(slot):
@@ -1503,6 +1514,7 @@ final class BoardController: ObservableObject {
      */
     private func fireLap(from previous: SessionState?, sessionID: String) {
         let current = registry.entry(forSession: sessionID)?.state
+        if current != previous { lastActivity = Date() }
         guard let name = Laps.show(
             from: previous, to: current, settings: model.preferences.ambient
         ) else { return }
@@ -1582,6 +1594,7 @@ final class BoardController: ObservableObject {
                     await self.paint()
                 } else if present {
                     await self.paint()
+                    await self.askStatus()
                 } else {
                     await self.closeDevice()
                 }
@@ -1740,6 +1753,17 @@ final class BoardController: ObservableObject {
         }
         if boardChanged { publish() }
 
+        let dark = !voiceIsActive && AutoOff.isDark(
+            idleFor: Date().timeIntervalSince(lastActivity),
+            after: model.preferences.autoOffSeconds,
+            states: registry.entries.map(\.state)
+        )
+        if dark != isDark {
+            Log.write("auto-off: lights \(dark ? "off" : "on")")
+            isDark = dark
+        }
+        let lit = !dark && !registry.entries.isEmpty
+
         do {
             // Build the whole repaint first, then write it under a single lock. A board
             // update is one logical operation; taking the cross-process lock once per
@@ -1757,7 +1781,7 @@ final class BoardController: ObservableObject {
             // Only when it changed, or every 30s in case another app took it: each send
             // restarts the ring's animation.
             if Date() >= ringBusyUntil {
-                let ring = CodexProtocol.LightingConfig(keys: .off, ambient: ambientSide())
+                let ring = CodexProtocol.LightingConfig(keys: .off, ambient: dark ? .off : ambientSide())
                 if ring != lastRing || Date().timeIntervalSince(lastRingAt) > 30 {
                     batch.append(device.prepare(lighting: ring))
                     lastRing = ring
@@ -1778,9 +1802,9 @@ final class BoardController: ObservableObject {
                 // `viewing` is applied here rather than stored — see Viewing.
                 let viewing = entry.map { isFocused($0, name: name(of: $0)) } ?? false
                 let state = entry.map { Viewing.display($0.state, isFocused: viewing) } ?? .ended
-                let appearance = registry.reserved.contains(slot) || registry.entries.isEmpty
-                    ? .off
-                    : Viewing.appearance(state, isFocused: viewing, from: model.appearances)
+                let appearance = lit && !registry.reserved.contains(slot)
+                    ? Viewing.appearance(state, isFocused: viewing, from: model.appearances)
+                    : .off
                 let effect = CodexProtocol.Effect(rawValue: appearance.effect.deviceCode) ?? .solid
                 let thread = try CodexProtocol.ThreadState(
                     physicalSlot: physical,
@@ -1844,6 +1868,31 @@ final class BoardController: ObservableObject {
     // MARK: - commands
 
     func sync() { Task { await paint() } }
+
+    /// Any press wakes a dark pad, and still does its job.
+    private func noteActivity() {
+        lastActivity = Date()
+        if isDark { Task { await paint() } }
+    }
+
+    private func apply(_ status: PadStatus) {
+        model.apply(padStatus: status)
+        lastStatusLog = Log.changed(
+            "pad", last: lastStatusLog,
+            to: "firmware \(status.firmware), layer \(status.layer.map(String.init) ?? "?"), "
+                + "battery \(status.battery.map { "\($0)%" } ?? "?")\(status.isCharging == true ? " charging" : "")"
+        )
+    }
+
+    /// Battery, charging, firmware and layer, at most once a minute.
+    private func askStatus() async {
+        guard deviceIsOpen, Date().timeIntervalSince(statusAskedAt) >= 60 else { return }
+        statusAskedAt = Date()
+        let request = CodexProtocol.requestJSON(
+            methodName: PadStatus.method, params: "{}", id: Int.random(in: 0..<1000)
+        )
+        try? await device.write(batch: [CodexProtocol.frame(request)])
+    }
 
     /**
      Play a ring animation.

@@ -40,6 +40,11 @@ struct DevicePane: View {
                             .font(.system(size: 11.5))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                        if let status = board.padStatus {
+                            Text("Firmware \(status.firmware)" + (status.layer.map { " · layer \($0)" } ?? ""))
+                                .font(.system(size: 11))
+                                .foregroundStyle(.tertiary)
+                        }
                     }
                     Spacer(minLength: 0)
                 }

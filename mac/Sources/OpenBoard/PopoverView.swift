@@ -141,7 +141,10 @@ struct PopoverView: View {
             Spacer(minLength: 0)
 
             if board.device.isUsable {
-                BatteryBadge(percent: battery.percent, isCharging: board.isWired)
+                BatteryBadge(
+                    percent: board.padStatus?.battery ?? battery.percent,
+                    isCharging: board.padStatus?.isCharging ?? board.isWired
+                )
             }
         }
         .padding(.horizontal, 14)

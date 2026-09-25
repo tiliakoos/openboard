@@ -24,6 +24,8 @@ final class BoardModel: ObservableObject {
     /// The attached pad's hardware serial, or nil when nothing is attached. The key a
     /// custom name is filed under — see `Preferences.deviceNames`.
     @Published private(set) var deviceSerial: String?
+    /// The pad's own report. Battery here works on USB too, unlike `BatteryMonitor`.
+    @Published private(set) var padStatus: PadStatus?
 
     /**
      What to call the pad on screen.
@@ -141,6 +143,8 @@ final class BoardModel: ObservableObject {
     func apply(isWired: Bool) { self.isWired = isWired }
 
     func apply(deviceSerial: String?) { self.deviceSerial = deviceSerial }
+
+    func apply(padStatus: PadStatus) { self.padStatus = padStatus }
 }
 
 /// One of the six keys, as the UI needs it.

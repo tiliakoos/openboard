@@ -95,6 +95,8 @@ public struct Preferences: Equatable, Sendable {
     /// giving up on a prompt — a question with no good answer, about an event that
     /// should not happen. Off restores the old safety net at a fixed 15 minutes.
     public var holdAttention: Bool
+    /// Idle seconds before every light goes off. 0 means never. See `AutoOff`.
+    public var autoOffSeconds: Int
     public var maxHoldSeconds: Int
     /// Whether the voice keys drive dictation through the `voice:pushToTalk`
     /// keybinding chord (⌃Y) instead of tapping space. Space is overloaded — with
@@ -327,6 +329,7 @@ public struct Preferences: Equatable, Sendable {
         staleHours: Int,
         doneDecaySeconds: Int,
         holdAttention: Bool = true,
+        autoOffSeconds: Int = 600,
         maxHoldSeconds: Int,
         voiceChord: Bool = false,
         voiceTracking: VoiceTracking = .mic
@@ -350,6 +353,7 @@ public struct Preferences: Equatable, Sendable {
         self.staleHours = staleHours
         self.doneDecaySeconds = doneDecaySeconds
         self.holdAttention = holdAttention
+        self.autoOffSeconds = autoOffSeconds
         self.maxHoldSeconds = maxHoldSeconds
         self.voiceChord = voiceChord
         self.voiceTracking = voiceTracking
@@ -570,6 +574,7 @@ extension Preferences {
         if let value = json["staleHours"] as? Int { result.staleHours = value }
         if let value = json["doneDecaySeconds"] as? Int { result.doneDecaySeconds = value }
         if let value = json["holdAttention"] as? Bool { result.holdAttention = value }
+        if let value = json["autoOffSeconds"] as? Int { result.autoOffSeconds = value }
         /*
          An old document's timeout, read as the decision it encoded.
 
@@ -684,6 +689,7 @@ extension Preferences {
             "staleHours": staleHours,
             "doneDecaySeconds": doneDecaySeconds,
             "holdAttention": holdAttention,
+            "autoOffSeconds": autoOffSeconds,
             "maxHoldSeconds": maxHoldSeconds,
             "voiceChord": voiceChord,
             "voiceTracking": voiceTracking.rawValue,

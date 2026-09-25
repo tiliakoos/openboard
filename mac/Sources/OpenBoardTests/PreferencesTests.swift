@@ -223,6 +223,7 @@ func runPreferencesTests() {
         prefs.staleHours = 24
         prefs.doneDecaySeconds = 120
         prefs.holdAttention = false
+        prefs.autoOffSeconds = 210
         prefs.maxHoldSeconds = 45
 
         expect(prefs != Preferences.default, "the fixture never left the defaults")

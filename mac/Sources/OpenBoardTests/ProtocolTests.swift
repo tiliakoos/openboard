@@ -10,6 +10,19 @@ import OpenBoardKit
  fixtures are what `lib/hid.cjs` actually produces.
  */
 func runProtocolTests() {
+    test("a device.status reply parses, with or without the echoed method") {
+        let captured = #"{"result":{"version":"0.6.2","profile_index":0,"layer_index":1,"battery":98,"is_charging":false},"id":4242,"method":"device.status"}"#
+        let status = PadStatus.parse(Data(captured.utf8))
+        expectEqual(status?.firmware, "0.6.2")
+        expectEqual(status?.layer, 1)
+        expectEqual(status?.battery, 98)
+        expectEqual(status?.isCharging, false)
+        let newer = #"{"id":294,"result":{"version":"1.0.0","profile_index":0,"layer_index":0,"battery":100,"is_charging":false}}"#
+        expectEqual(PadStatus.parse(Data(newer.utf8))?.firmware, "1.0.0")
+        expect(PadStatus.parse(Data(#"{"result":{"ok":1},"id":7}"#.utf8)) == nil, "an ack read as a status")
+        expect(PadStatus.parse(Data(#"{"m":"v.oai.hid","p":{"k":"AG00","act":1}}"#.utf8)) == nil)
+    }
+
     test("a report is 64 bytes with a 3-byte header") {
         let reports = CodexProtocol.frame(Data("hello".utf8))
         expectEqual(reports.count, 1)
