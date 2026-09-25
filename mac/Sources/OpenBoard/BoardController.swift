@@ -71,6 +71,8 @@ final class BoardController: ObservableObject {
     /// tree is paid once per session rather than once per hook. Cleared whenever the
     /// setting changes, because the answer then does too.
     private var mutedPIDs: Set<Int> = []
+    /// Background (bridge) session id -> the interactive session it continues. Never persisted.
+    private var continuations: [String: String] = [:]
     private var lastPaintLog: String?
     private var lastAmbientLog: String?
     private var lastPresenceReason: String?
@@ -1194,7 +1196,7 @@ final class BoardController: ObservableObject {
             payload: event.eligibilityPayload,
             harness: event.harness
         )
-        guard verdict.eligible, let sessionID = event.sessionID else {
+        guard verdict.eligible, let hookSessionID = event.sessionID else {
             Log.write("hook \(event.name): refused (\(verdict.reason.rawValue) \(verdict.detail))")
             return
         }
@@ -1230,7 +1232,22 @@ final class BoardController: ObservableObject {
         // branches below can decline it. A line that reads like a state change while
         // nothing changed is how a stuck key stayed invisible for a whole session, so
         // anything that declines says so on its own line.
-        Log.write("hook \(event.name) maps to \(state.rawValue) [\(sessionID.prefix(8))]")
+        Log.write("hook \(event.name) maps to \(state.rawValue) [\(hookSessionID.prefix(8))]")
+
+        var sessionID = continuations[hookSessionID] ?? hookSessionID
+        if event.environment["CLAUDE_CODE_SESSION_KIND"] == "bg",
+           registry.entry(forSession: sessionID) == nil {
+            guard let parent = registry.entries.first(where: {
+                SessionTranscript.continuation(of: $0.transcriptPath) == hookSessionID
+            }) else {
+                Log.write("hook \(event.name): refused (background session, parent not on the board)")
+                return
+            }
+            continuations[hookSessionID] = parent.sessionID
+            sessionID = parent.sessionID
+            Log.write("hook \(event.name): merged into slot \(parent.slot) (\(parent.sessionID.prefix(8)))")
+            if event.name == "SessionStart" { return }
+        }
 
         // Dictation ends when what it was dictating is sent.
         if event.name == "UserPromptSubmit", voiceIsActive {
