@@ -334,9 +334,7 @@ func runFocusPulseTests() {
     }
 
     test("a dark key stays dark") {
-        // `ended` is off. Pulsing it would light a key for a session that has closed.
-        let ended = SessionState.ended.defaultAppearance
-        expectEqual(Viewing.focused(ended, isFocused: true), ended)
+        expectEqual(Viewing.focused(.off, isFocused: true), .off)
     }
 
     test("brightness never exceeds what the device accepts") {

@@ -46,7 +46,7 @@ public enum SessionState: String, CaseIterable, Sendable, Codable {
         case .stalled: "stalled"
         case .done: "done"
         case .error: "error"
-        case .ended: "ended"
+        case .ended: "free key"
         }
     }
 
@@ -59,7 +59,7 @@ public enum SessionState: String, CaseIterable, Sendable, Codable {
         case .stalled: "An idle prompt fired."
         case .done: "Finished, and you have not been back yet."
         case .error: "The turn failed."
-        case .ended: "Session closed."
+        case .ended: "No session here, while another key has one."
         }
     }
 
@@ -189,8 +189,8 @@ extension SessionState {
     /// The shipped defaults. Colors and brightness carried from `lib/config.cjs`;
     /// the effects have since settled on shallow-breath across the board — one
     /// visual language instead of three — with two exceptions that mean something:
-    /// `error` breathes deep so a failure is unmistakably not routine, and `ended`
-    /// stays dark because a session that is gone has nothing to say.
+    /// `error` breathes deep so a failure is unmistakably not routine, and `ended` —
+    /// a free key — is plain white, as Codex paints one.
     ///
     /// `speed` is carried even though the settings window does not expose it: the
     /// device takes it, the Node version set it, and dropping it here would quietly
@@ -203,7 +203,7 @@ extension SessionState {
         .stalled: Appearance(color: RGB(0xFF6A00), effect: .shallowBreath, brightness: 0.5, speed: 0.3),
         .done: Appearance(color: RGB(0x09B821), effect: .shallowBreath, brightness: 0.7, speed: 0.25),
         .error: Appearance(color: RGB(0xD41145), effect: .breath, brightness: 0.9, speed: 0.8),
-        .ended: Appearance(color: RGB(0x000000), effect: .off, brightness: 0, speed: 0),
+        .ended: Appearance(color: RGB(0xFFFFFF), effect: .solid, brightness: 1, speed: 0),
     ]
 
     public var defaultAppearance: Appearance {

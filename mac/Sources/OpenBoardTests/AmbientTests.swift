@@ -54,6 +54,13 @@ func runAmbientTests() {
         expectEqual(onlyEnded?.appearance, .off)
     }
 
+    test("the ring spins while working, in working's color") {
+        let working = resolve([.working, .done, nil, nil, nil, nil])?.appearance
+        expectEqual(working?.effect, .snake)
+        expectEqual(working?.color, appearances[.working]?.color)
+        expectEqual(resolve([.done, nil, nil, nil, nil, nil])?.appearance, appearances[.done])
+    }
+
     test("an empty board is dark") {
         let empty = resolve([nil, nil, nil, nil, nil, nil])
         expect(empty?.state == nil)

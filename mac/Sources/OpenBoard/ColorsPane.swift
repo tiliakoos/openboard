@@ -468,7 +468,7 @@ private struct StateRow: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                if appearance.color.isNearWhite, appearance.effect != .off {
+                if state != .ended, appearance.color.isNearWhite, appearance.effect != .off {
                     Text("Near-white — the pad rests white, so this reads as unlit.")
                         .font(.system(size: 10.5, weight: .medium))
                         .foregroundStyle(Color(RGB(0xFF6A00)))

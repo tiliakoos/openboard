@@ -34,7 +34,7 @@ public enum Ambient {
         /// Dark, except for laps. The ring is a notification surface, not a status
         /// display — a lap fires on a transition and then it goes back to nothing.
         case events
-        /// Continuously shows the most urgent state on the board.
+        /// Continuously shows the most urgent state on the board. Working spins.
         case aggregate
         /// One color, always.
         case fixed
@@ -82,7 +82,8 @@ public enum Ambient {
             // An empty board is dark, not "the least urgent thing that could be true".
             return Resolution(state: nil, appearance: .off)
         }
-        guard let appearance = appearances[winner] else { return nil }
+        guard var appearance = appearances[winner] else { return nil }
+        if winner == .working { appearance.effect = .snake }
         return Resolution(state: winner, appearance: appearance)
     }
 

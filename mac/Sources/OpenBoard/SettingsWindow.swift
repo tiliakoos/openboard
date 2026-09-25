@@ -625,13 +625,7 @@ struct CapInspector: View {
             case .element(.touch):
                 inert("No event has ever been observed from this sensor.")
 
-            case .agent:
-                // Kept: this pane is where every other key is rebound.
-                Text("Agent keys always jump to their slot and cannot be rebound.")
-                    .font(.system(size: 12.5)).foregroundStyle(.secondary)
-                capPicker(allowNone: true)
-
-            case .action:
+            case .agent, .action:
                 actionPicker(title: "PRESSING THIS KEY", key: cell.id)
                 if board.actions[cell.id]?.needsSnippetText == true {
                     VStack(alignment: .leading, spacing: 6) {
@@ -651,7 +645,7 @@ struct CapInspector: View {
                 if board.actions[cell.id]?.isBuiltInVoice == true {
                     voiceTrackingSection(binding: builtInVoiceTrackingBinding)
                 }
-                capPicker(allowNone: false)
+                capPicker(allowNone: cell.isAgent)
                 if cell.span > 1 {
                     // Kept: the title reads "ACT10 + ACT11", which looks like two keys
                     // to bind separately.
@@ -788,7 +782,8 @@ struct CapInspector: View {
                 .font(.system(size: 10, weight: .semibold)).kerning(0.8)
                 .foregroundStyle(.tertiary)
             Picker("", selection: actionBinding(key)) {
-                Text("unassigned").tag(KeyAction?.none)
+                Text(cell.isAgent ? "session key — jumps to its session" : "unassigned")
+                    .tag(KeyAction?.none)
                 ForEach(KeyAction.allCases, id: \.self) { action in
                     Text(action.long).tag(KeyAction?.some(action))
                 }
@@ -855,7 +850,7 @@ struct CapInspector: View {
 
     private var kind: String {
         switch cell.kind {
-        case .agent: "agent key · always jumps to its slot"
+        case .agent: "agent key · a session or an action"
         case .element(.encoder): "dial · turn and click"
         case .element: "inert"
         case .action: cell.span > 1 ? "action key · one wide cap" : "action key · yours to set"
@@ -999,7 +994,7 @@ struct BoardCapView: View {
     private var isDial: Bool { if case .element(.encoder) = cell.kind { true } else { false } }
     private var isStick: Bool { if case .element(.joystick) = cell.kind { true } else { false } }
     private var isTouch: Bool { if case .element(.touch) = cell.kind { true } else { false } }
-    private var isAgent: Bool { if case .agent = cell.kind { true } else { false } }
+    private var isSessionKey: Bool { cell.isAgent && action == nil }
 
     var body: some View {
         ZStack {
@@ -1093,7 +1088,7 @@ struct BoardCapView: View {
                 startPoint: .topLeading, endPoint: .bottomTrailing
             ))
         }
-        if isAgent {
+        if isSessionKey {
             // Translucent, so an LED underneath shows through the cap.
             return AnyShapeStyle(LinearGradient(
                 stops: [
@@ -1116,7 +1111,7 @@ struct BoardCapView: View {
 
     /// The LED under a session cap, if it is lit.
     private var lit: Appearance? {
-        guard isAgent, let appearance = slot?.appearance, appearance.effect != .off else {
+        guard isSessionKey, let appearance = slot?.appearance, appearance.effect != .off else {
             return nil
         }
         return appearance
@@ -1159,7 +1154,7 @@ struct BoardCapView: View {
 
     private var label: String {
         switch cell.kind {
-        case let .agent(slot): "S\(slot)"
+        case let .agent(slot): isSessionKey ? "S\(slot)" : ""
         case .element(.encoder): "DIAL"
         case .element(.joystick): "STICK"
         case .element(.touch): ""

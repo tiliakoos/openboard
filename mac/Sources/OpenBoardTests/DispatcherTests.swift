@@ -173,6 +173,22 @@ func runDispatcherTests() {
         expect(dispatcher.intent(for: KeyEvent(key: "AG00", action: .up), now: t0) == nil)
     }
 
+    test("an agent key bound to an action runs it, and its release arrives") {
+        var dispatcher = KeyDispatcher(actions: ["AG01": .shortcut])
+        expectEqual(
+            dispatcher.intent(for: KeyEvent(key: "AG01", action: .down), now: t0),
+            .action(.shortcut, key: "AG01")
+        )
+        expectEqual(
+            dispatcher.intent(for: KeyEvent(key: "AG01", action: .up), now: t0),
+            .release(key: "AG01")
+        )
+        expectEqual(
+            dispatcher.intent(for: KeyEvent(key: "AG00", action: .down), now: t0),
+            .jump(slot: 1)
+        )
+    }
+
     test("an unbound key is silent") {
         var dispatcher = KeyDispatcher(actions: [:])
         expect(dispatcher.intent(for: KeyEvent(key: "ACT06", action: .down), now: t0) == nil)

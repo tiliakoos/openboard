@@ -101,7 +101,7 @@ final class BoardModel: ObservableObject {
         // Every action key, including ones explicitly cleared — an unassigned key must
         // persist *as* unassigned or it reverts to its default on the next launch.
         var keys: [String: KeyAction?] = [:]
-        for cell in BoardLayout.cells where cell.isAction { keys[cell.id] = actions[cell.id] }
+        for cell in BoardLayout.cells where cell.isAction || cell.isAgent { keys[cell.id] = actions[cell.id] }
         keys["ENC"] = actions["ENC"]
         next.actionKeys = keys
         next.caps = caps

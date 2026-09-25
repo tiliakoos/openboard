@@ -67,6 +67,8 @@ public struct SessionRegistry: Sendable, Equatable {
         cursor = max(cursor, value)
     }
     public let slotCount: Int
+    /// Agent keys bound to an action. Never given to a session.
+    public private(set) var reserved: Set<Int> = []
 
     /// Silence long enough to assume a terminal was killed without SessionEnd firing.
     ///
@@ -148,7 +150,7 @@ public struct SessionRegistry: Sendable, Equatable {
      is deliberate: fail dark rather than steal the light you need in order to see.
      */
     private func pickSlot(now: Date, isAlive: (Int?) -> Bool) -> (slot: Int, mode: ClaimMode)? {
-        for slot in 1...slotCount where entry(forSlot: slot) == nil {
+        for slot in 1...slotCount where entry(forSlot: slot) == nil && !reserved.contains(slot) {
             return (slot, .unused)
         }
 
@@ -487,7 +489,7 @@ public struct SessionRegistry: Sendable, Equatable {
      */
     @discardableResult
     public mutating func move(sessionID: String, toSlot: Int) -> Bool {
-        guard (1...slotCount).contains(toSlot),
+        guard (1...slotCount).contains(toSlot), !reserved.contains(toSlot),
               let index = entries.firstIndex(where: { $0.sessionID == sessionID })
         else { return false }
         let fromSlot = entries[index].slot
@@ -496,6 +498,20 @@ public struct SessionRegistry: Sendable, Equatable {
         }
         entries[index].slot = toSlot
         return true
+    }
+
+    /// Take `slots` away from sessions. One already on such a key moves to a free one,
+    /// or leaves the board and claims again on its next hook.
+    public mutating func reserve(_ slots: Set<Int>) {
+        reserved = slots
+        for index in entries.indices where slots.contains(entries[index].slot) {
+            if let free = (1...slotCount).first(where: {
+                !slots.contains($0) && entry(forSlot: $0) == nil
+            }) {
+                entries[index].slot = free
+            }
+        }
+        entries.removeAll { slots.contains($0.slot) }
     }
 
     /// Forget everything. The registry is ephemeral, so this is the whole operation.

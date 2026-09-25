@@ -225,7 +225,7 @@ struct PopoverView: View {
     private var sessions: some View {
         VStack(alignment: .leading, spacing: 0) {
             SectionLabel("Agent keys")
-            ForEach(board.slots) { slot in
+            ForEach(board.slots.filter { board.actions[$0.key] == nil }) { slot in
                 SessionRow(
                     slot: slot,
                     capID: board.caps[slot.key],
@@ -278,7 +278,7 @@ struct PopoverView: View {
             // edges the way a single sheet of material does.
             GlassGroup(spacing: 7) {
                 Grid(horizontalSpacing: 7, verticalSpacing: 12) {
-                    ForEach(Array(BoardLayout.rows.suffix(2).enumerated()), id: \.offset) { _, row in
+                    ForEach(Array(padRows.enumerated()), id: \.offset) { _, row in
                         GridRow {
                             ForEach(row, id: \.id) { cell in
                                 keyCell(cell).gridCellColumns(cell.span)
@@ -295,6 +295,13 @@ struct PopoverView: View {
         .padding(.bottom, 12)
     }
 
+    /// The whole pad once an Agent key is bound to an action, so it shows where it sits.
+    private var padRows: [[BoardCell]] {
+        BoardLayout.agentKeys.contains { board.actions[$0] != nil }
+            ? BoardLayout.rows
+            : Array(BoardLayout.rows.suffix(2))
+    }
+
     /// A caption may use its key's width plus a little of the gutter either side, but
     /// never enough to touch the next one — 3pt of clear space is what keeps two
     /// wrapped names from reading as one paragraph.
@@ -306,7 +313,7 @@ struct PopoverView: View {
 
     @ViewBuilder
     private func keyCell(_ cell: BoardCell) -> some View {
-        if case .element(.touch) = cell.kind {
+        if cell.isAgent ? board.actions[cell.id] == nil : !cell.isAction {
             Color.clear.frame(width: 51, height: 51)
         } else {
             VStack(spacing: 6) {

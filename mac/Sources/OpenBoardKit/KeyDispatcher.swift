@@ -87,7 +87,7 @@ public struct KeyDispatcher {
         // release leaves a key held down indefinitely, which is invisible until every
         // subsequent keystroke is wrong.
         if event.action == .up {
-            guard BoardLayout.slot(forKey: key) == nil else { return nil }
+            guard BoardLayout.slot(forKey: key) == nil || actions[key] != nil else { return nil }
             return .release(key: key)
         }
 
@@ -98,7 +98,7 @@ public struct KeyDispatcher {
         }
         lastFired[key] = now
 
-        if let slot = BoardLayout.slot(forKey: key) {
+        if actions[key] == nil, let slot = BoardLayout.slot(forKey: key) {
             return .jump(slot: slot)
         }
         // The dial's click is not decided here. It has two bindings — press and

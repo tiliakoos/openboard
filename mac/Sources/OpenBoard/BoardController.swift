@@ -146,6 +146,9 @@ final class BoardController: ObservableObject {
     /// is asserted once and re-sending restarts the firmware's animation from the
     /// beginning, which turns a 4s lap into flashing.
     private var ringBusyUntil: Date = .distantPast
+    /// What `paint` last sent the ring. Cleared by anything else that writes it.
+    private var lastRing: CodexProtocol.LightingConfig?
+    private var lastRingAt: Date = .distantPast
     private var runningShow: String?
 
 
@@ -197,6 +200,7 @@ final class BoardController: ObservableObject {
         guard deviceIsOpen else { return }
         let calibration = model.calibration
         let appearance = model.appearances[state] ?? state.defaultAppearance
+        lastRing = nil
 
         Task { [weak self] in
             guard let self else { return }
@@ -242,6 +246,7 @@ final class BoardController: ObservableObject {
     func beginCalibrationCapture() {
         guard deviceIsOpen else { return }
         calibrationTask?.cancel()
+        lastRing = nil
         calibrationTask = Task { [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
@@ -347,6 +352,7 @@ final class BoardController: ObservableObject {
         // Cleared so a rebind is not swallowed by the previous binding's window.
         dispatcher.reset()
         registry.staleInterval = prefs.staleInterval
+        registry.reserve(Set(model.actions.keys.compactMap(BoardLayout.slot(forKey:))))
     }
 
     func start() {
@@ -407,13 +413,11 @@ final class BoardController: ObservableObject {
             )
         }
 
-        applyPreferences()
-
         // Restore the board before anything reads it, so a session keeps the key it
         // had. Entries that cannot still be true are dropped rather than trusted —
         // see RegistryStore.
         registry = RegistryStore.load(staleInterval: prefs.staleInterval)
-        registry.staleInterval = prefs.staleInterval
+        applyPreferences()
         if !registry.entries.isEmpty {
             Log.write(
                 "registry: restored \(registry.entries.count) session(s) — "
@@ -594,10 +598,10 @@ final class BoardController: ObservableObject {
                 Log.write("key \(key): no shortcut recorded")
                 return
             }
-            // Hold needs a release edge, and only the action caps deliver one. The file
+            // Hold needs a release edge, and only the pad's caps deliver one. The file
             // is hand-editable, so a hold on the dial or the stick is sent as a tap
             // rather than left to the 60s backstop.
-            let canHold = BoardLayout.cells.contains { $0.isAction && $0.id == key }
+            let canHold = BoardLayout.cells.contains { ($0.isAction || $0.isAgent) && $0.id == key }
             if shortcut.mode == .hold, canHold {
                 pushToTalk.begin(shortcut, key: key)
                 if shortcut.voice, pushToTalk.isHeld {
@@ -1574,6 +1578,7 @@ final class BoardController: ObservableObject {
                     await self.reopen()
                     await self.paint()
                     try? await Task.sleep(for: .milliseconds(1500))
+                    self.lastRing = nil
                     await self.paint()
                 } else if present {
                     await self.paint()
@@ -1591,6 +1596,7 @@ final class BoardController: ObservableObject {
 
     private func reopen() async {
         closeDeviceSync()
+        lastRing = nil
         do {
             try device.open()
             deviceIsOpen = true
@@ -1747,10 +1753,16 @@ final class BoardController: ObservableObject {
             // Silence the key backlight, or it floods the pad and buries per-key
             // color. Skipped entirely while a show owns the ring: this call carries
             // the ring config too, so sending it mid-show cuts the animation off.
+            //
+            // Only when it changed, or every 30s in case another app took it: each send
+            // restarts the ring's animation.
             if Date() >= ringBusyUntil {
-                batch.append(device.prepare(
-                    lighting: CodexProtocol.LightingConfig(keys: .off, ambient: ambientSide())
-                ))
+                let ring = CodexProtocol.LightingConfig(keys: .off, ambient: ambientSide())
+                if ring != lastRing || Date().timeIntervalSince(lastRingAt) > 30 {
+                    batch.append(device.prepare(lighting: ring))
+                    lastRing = ring
+                    lastRingAt = Date()
+                }
             }
 
             for (slot, entry) in registry.occupancy() {
@@ -1762,15 +1774,13 @@ final class BoardController: ObservableObject {
                     skipped += 1
                     continue
                 }
-                // A free slot and a finished session both mean "nothing to look at".
+                // A free slot takes `ended`'s look, only while a session is on the board.
                 // `viewing` is applied here rather than stored — see Viewing.
                 let viewing = entry.map { isFocused($0, name: name(of: $0)) } ?? false
                 let state = entry.map { Viewing.display($0.state, isFocused: viewing) } ?? .ended
-                let appearance = Viewing.appearance(
-                    state,
-                    isFocused: viewing,
-                    from: model.appearances
-                )
+                let appearance = registry.reserved.contains(slot) || registry.entries.isEmpty
+                    ? .off
+                    : Viewing.appearance(state, isFocused: viewing, from: model.appearances)
                 let effect = CodexProtocol.Effect(rawValue: appearance.effect.deviceCode) ?? .solid
                 let thread = try CodexProtocol.ThreadState(
                     physicalSlot: physical,
@@ -1868,6 +1878,7 @@ final class BoardController: ObservableObject {
         )
         countdown = player
         model.funModeRunning = true
+        lastRing = nil
         // The ring belongs to the show for the duration; a status repaint mid-song
         // restarts the firmware's animation and reads as flicker.
         ringBusyUntil = Date().addingTimeInterval(400)
@@ -1883,6 +1894,7 @@ final class BoardController: ObservableObject {
 
         runningShow = show.name
         model.runningShow = show.name
+        lastRing = nil
         ringBusyUntil = Date().addingTimeInterval(show.duration.seconds + 0.8)
         Log.write("show \(show.name): starting (\(Int(show.duration.seconds * 1000))ms)")
 
@@ -1939,7 +1951,8 @@ final class BoardController: ObservableObject {
     /// Put a session on the key `delta` places away, swapping with whatever is there.
     /// The registry decides; this logs, publishes and paints — same shape as `release`.
     func move(slot: Int, by delta: Int) {
-        let target = slot + delta
+        var target = slot + delta
+        while registry.reserved.contains(target) { target += delta }
         guard let entry = registry.entry(forSlot: slot),
               registry.move(sessionID: entry.sessionID, toSlot: target)
         else { return }

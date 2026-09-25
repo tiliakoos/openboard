@@ -23,7 +23,7 @@ test("LED colors are the hardware values, not a palette") {
     expect(SessionState.stalled.defaultAppearance.color.hex == "#FF6A00")
     expect(SessionState.done.defaultAppearance.color.hex == "#09B821")
     expect(SessionState.error.defaultAppearance.color.hex == "#D41145")
-    expect(SessionState.ended.defaultAppearance.effect == .off)
+    expect(SessionState.ended.defaultAppearance.color.hex == "#FFFFFF")
 }
 
 test("orange belongs to awaiting and stalled alone") {

@@ -264,6 +264,27 @@ func runRegistryTests() {
         expectEqual(registry.entries, before)
     }
 
+    test("a key bound to an action is never given to a session") {
+        var registry = SessionRegistry()
+        registry.reserve([2])
+        _ = registry.claim(sessionID: "a", pid: 1, isAlive: alwaysAlive)
+        expectEqual(registry.claim(sessionID: "b", pid: 2, isAlive: alwaysAlive).entry?.slot, 3)
+        expect(!registry.move(sessionID: "a", toSlot: 2))
+    }
+
+    test("binding a key moves its session to a free one, or off the board") {
+        var registry = SessionRegistry()
+        _ = registry.claim(sessionID: "a", pid: 1, isAlive: alwaysAlive)
+        registry.reserve([1])
+        expectEqual(registry.entry(forSession: "a")?.slot, 2)
+
+        var full = SessionRegistry()
+        for i in 1...6 { _ = full.claim(sessionID: "s\(i)", pid: i, isAlive: alwaysAlive) }
+        full.reserve([6])
+        expect(full.entry(forSession: "s6") == nil)
+        expectEqual(full.entries.count, 5)
+    }
+
     // MARK: - event mapping
 
     test("hook events map to the states the Node version used") {

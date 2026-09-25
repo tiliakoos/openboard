@@ -29,7 +29,7 @@ public enum BoardElement: String, Sendable, Codable {
 
 public struct BoardCell: Identifiable, Sendable {
     public enum Kind: Sendable {
-        /// One of the six status keys. Always jumps to its session; not rebindable.
+        /// One of the six status keys. Jumps to its session unless bound to an action.
         case agent(slot: Int)
         /// Freely assignable.
         case action
