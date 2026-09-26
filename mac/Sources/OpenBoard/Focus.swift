@@ -18,6 +18,8 @@ import OpenBoardKit
    `origin` knew about cmux, fell through to opening the folder in an editor. Its own
    socket addresses a surface by id instead, which is exact and needs no Automation
    grant. See `Cmux`.
+ - **Warp: exact, by URL.** No AppleScript and no tabs in the accessibility tree, but
+   Warp gives every shell a URL that focuses its pane. See `focusWarp`.
  - **VS Code: approximate.** An extension-hosted session has no tty, so the window for
    the workspace folder is raised. That focuses the right window, not the specific
    Claude panel inside it — an honest limit rather than a bug to chase.
@@ -63,6 +65,10 @@ enum Focus {
         // two Apple events and two possible permission prompts to reach a wrong answer.
         if slot.origin == .cmux {
             return focusCmux(slot)
+        }
+        // Same reason: a Warp session has a tty that neither Terminal nor iTerm2 owns.
+        if slot.origin == .warp {
+            return focusWarp(slot)
         }
 
         if let tty = slot.surface, tty.hasPrefix("ttys") || tty.hasPrefix("/dev/") {
@@ -254,6 +260,29 @@ enum Focus {
         // surface rather than switching workspaces in front of you.
         app.activate()
         return .raised(method: "cmux-surface")
+    }
+
+    /**
+     Bring the Warp pane holding this session forward.
+
+     Opening `WARP_FOCUS_URL` (`warp://session/<pane>`) raises the pane's window, selects
+     its tab and pane, and activates Warp — the same from inside Warp as from any other
+     app. No Apple event, so no Automation grant.
+
+     Only for a session `ProcessAncestry` places in Warp. The variable is inherited like
+     any other: VS Code launched from a Warp shell hands it to every integrated terminal,
+     and opening it there would raise the Warp tab that launched the editor.
+     */
+    private static func focusWarp(_ slot: SlotView) -> Outcome {
+        // Never launch Warp to look for a session that cannot be in it, the same
+        // reasoning as `focusTerminal`: opening the URL would start it.
+        guard isRunning(bundleID: "dev.warp.Warp-Stable") else { return .notFound }
+        guard let pid = slot.pid,
+              let value = ProcessEnvironment.value(of: "WARP_FOCUS_URL", pid: pid),
+              let url = URL(string: value)
+        else { return .failed("no WARP_FOCUS_URL in the session's environment") }
+        guard NSWorkspace.shared.open(url) else { return .failed("Warp refused \(value)") }
+        return .raised(method: "warp-session")
     }
 
     /// The `cmux` binary belonging to the copy of cmux that is actually running.

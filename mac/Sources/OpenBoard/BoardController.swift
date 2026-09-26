@@ -523,6 +523,10 @@ final class BoardController: ObservableObject {
         guard let intent = dispatcher.intent(for: event) else { return }
         switch intent {
         case let .jump(slot):
+            guard model.preferences.agentKeysJump else {
+                Log.write("key: slot \(slot) not jumped (turned off)")
+                return
+            }
             jump(to: slot)
         case let .action(action, key):
             perform(action, key: key)

@@ -36,6 +36,9 @@ public enum ProcessAncestry {
         /// A cmux surface — a tab or split in the cmux terminal. Reached through cmux's
         /// own socket rather than by tty; see `Cmux`.
         case cmux
+        /// Warp. Reached through the focus URL it gives every shell rather than by tty;
+        /// see `Focus.focusWarp`.
+        case warp
         case unknown
     }
 
@@ -58,6 +61,10 @@ public enum ProcessAncestry {
         // somewhere else entirely is not evidence of anything; a path *through the
         // bundle* is, whichever binary inside it is running.
         ("cmux.app", .cmux),
+        // The executable is `stable`, which says nothing; the bundle does. Warp
+        // Preview is `WarpPreview.app` and deliberately not matched: its focus URL has
+        // not been checked.
+        ("Warp.app", .warp),
     ]
 
     /// Walk up from a process until one of the known hosts is recognised.

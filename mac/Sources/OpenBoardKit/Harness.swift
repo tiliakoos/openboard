@@ -183,6 +183,16 @@ extension Harness {
                 host: .cmux
             ),
             Surface(
+                id: "warp",
+                name: "Warp",
+                detection: "The owning process. A tty alone cannot tell Warp from "
+                    + "Terminal — both allocate a real one.",
+                jump: "Opens the `WARP_FOCUS_URL` Warp gives the session's shell — the "
+                    + "exact tab or split, in whichever window. No Automation grant "
+                    + "needed.",
+                host: .warp
+            ),
+            Surface(
                 id: "vscode",
                 name: "VS Code",
                 detection: "Entry point `claude-vscode`, or the owning process when a "

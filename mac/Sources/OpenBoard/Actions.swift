@@ -333,6 +333,11 @@ enum Actions {
         }
 
         let target = pending[0]
+        // Warp can be raised but not confirmed: nothing outside it can read which pane
+        // is in front, and a ⏎ sent before the switch lands goes to the tab you were in.
+        guard target.origin != .warp else {
+            return .focusFailed(slot: target.slot, reason: "Warp cannot confirm which tab is in front")
+        }
         let raised = Focus.raise(target)
         guard case .raised = raised else {
             return .focusFailed(slot: target.slot, reason: "\(raised)")

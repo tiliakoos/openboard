@@ -107,6 +107,10 @@ public struct Preferences: Equatable, Sendable {
     /// How built-in voice keys (`voice-tap`, `voice-talk`, `voice-toggle`) track the
     /// dictation ring. Custom shortcuts carry their own on `Shortcut.voiceTracking`.
     public var voiceTracking: VoiceTracking
+    /// Whether pressing an agent key that holds a session brings that session forward.
+    /// Off leaves the pad's session keys inert; the popover and the next/previous
+    /// session actions still jump.
+    public var agentKeysJump: Bool
 
     public struct Encoder: Equatable, Sendable {
         /// `scroll-up` or `scroll-down`, per direction.
@@ -332,7 +336,8 @@ public struct Preferences: Equatable, Sendable {
         autoOffSeconds: Int = 600,
         maxHoldSeconds: Int,
         voiceChord: Bool = false,
-        voiceTracking: VoiceTracking = .mic
+        voiceTracking: VoiceTracking = .mic,
+        agentKeysJump: Bool = true
     ) {
         self.states = states
         self.actionKeys = actionKeys
@@ -357,6 +362,7 @@ public struct Preferences: Equatable, Sendable {
         self.maxHoldSeconds = maxHoldSeconds
         self.voiceChord = voiceChord
         self.voiceTracking = voiceTracking
+        self.agentKeysJump = agentKeysJump
     }
 
     // MARK: - typed accessors
@@ -594,6 +600,7 @@ extension Preferences {
            let tracking = VoiceTracking(rawValue: raw) {
             result.voiceTracking = tracking
         }
+        if let value = json["agentKeysJump"] as? Bool { result.agentKeysJump = value }
 
         return result
     }
@@ -693,6 +700,7 @@ extension Preferences {
             "maxHoldSeconds": maxHoldSeconds,
             "voiceChord": voiceChord,
             "voiceTracking": voiceTracking.rawValue,
+            "agentKeysJump": agentKeysJump,
         ]
     }
 }

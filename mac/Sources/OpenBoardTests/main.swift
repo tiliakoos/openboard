@@ -53,6 +53,7 @@ runFocusITerm2Tests()
 runCmuxTests()
 runCmuxDiscoveryTests()
 runCmuxNewTabTests()
+runWarpTests()
 runSurfaceListeningTests()
 
 // Configuration and where it lives.

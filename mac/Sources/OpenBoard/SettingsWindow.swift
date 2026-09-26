@@ -305,9 +305,37 @@ struct BoardPane: View {
                     }
                     Spacer(minLength: 0)
                 }
+                jumpRow
             }
             .padding(22)
         }
+    }
+
+    /// For every session key at once, so it lives here rather than in one key's inspector.
+    private var jumpRow: some View {
+        Toggle(isOn: jumpBinding) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Session keys jump to their session").font(.system(size: 12.5))
+                Text("Pressing a key with a session brings its window and tab forward. "
+                    + "A key with no session does nothing either way.")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .toggleStyle(.switch)
+        .padding(12)
+        .background(.quaternary.opacity(0.35), in: .rect(cornerRadius: 10))
+    }
+
+    private var jumpBinding: Binding<Bool> {
+        Binding(
+            get: { board.preferences.agentKeysJump },
+            set: { jump in
+                board.updatePreferences { $0.agentKeysJump = jump }
+                commands.bindingsChanged()
+            }
+        )
     }
 
     /**

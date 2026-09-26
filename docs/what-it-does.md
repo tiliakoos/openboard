@@ -90,8 +90,8 @@ its current state. Anything blocked is called out at the top.
 
 Press an Agent key and OpenBoard brings that chat to the front. In Terminal and iTerm2 it
 finds the exact tab; in cmux it selects the exact surface, switching workspace if the
-session is in another one; in VS Code it reveals the panel already holding that
-conversation.
+session is in another one; in Warp it opens the exact tab through Warp's own focus URL;
+in VS Code it reveals the panel already holding that conversation.
 
 Nothing is ever *opened* by a jump. The extension reveals a panel it already has, and the
 integrated-terminal case raises the app rather than opening a folder — an approximate jump
@@ -109,6 +109,7 @@ execute and only a local process can reach the hardware.
 |---|---|
 | Terminal, iTerm2 | yes |
 | cmux | yes — any tab or split, in any workspace |
+| Warp | yes — any tab or split, in any window |
 | VS Code, integrated terminal | yes |
 | VS Code, extension-hosted | yes |
 | Subagents | no — six keys is a scarce budget |
