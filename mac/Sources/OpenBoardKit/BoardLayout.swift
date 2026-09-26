@@ -196,6 +196,9 @@ public enum KeyAction: String, CaseIterable, Sendable, Codable {
     /// next or previous occupied key. The one navigation that is about *this* app.
     case prevSession = "prev-session"
     case nextSession = "next-session"
+    /// Return to the window you were in before the last jump, and further back on each
+    /// press. See `BackHistory`.
+    case back
     /// Submit whatever is being typed. Unconditional, unlike `approve`, which answers
     /// the one waiting session and refuses otherwise.
     case enter
@@ -228,6 +231,7 @@ public enum KeyAction: String, CaseIterable, Sendable, Codable {
         case .arrowRight: "arrow right"
         case .prevSession: "previous session"
         case .nextSession: "next session"
+        case .back: "go back"
         case .enter: "send ⏎"
         case .shortcut: "custom shortcut"
         }
@@ -253,6 +257,7 @@ public enum KeyAction: String, CaseIterable, Sendable, Codable {
         case .arrowRight: "arrow right"
         case .prevSession: "previous session"
         case .nextSession: "next session"
+        case .back: "back to the window you jumped from"
         case .enter: "send ⏎ to the focused window"
         case .shortcut: "custom keyboard shortcut (recorded below)"
         default: short
@@ -287,7 +292,7 @@ public enum KeyAction: String, CaseIterable, Sendable, Codable {
      */
     public static var forJoystick: [KeyAction] {
         [.arrowUp, .arrowDown, .arrowLeft, .arrowRight,
-         .tabBack, .tabForward, .prevSession, .nextSession,
+         .tabBack, .tabForward, .prevSession, .nextSession, .back,
          .approve, .reject, .snippet, .enter, .shortcut]
     }
 

@@ -73,6 +73,9 @@ final class BoardController: ObservableObject {
     private var mutedPIDs: Set<Int> = []
     /// Background (bridge) session id -> the interactive session it continues. Never persisted.
     private var continuations: [String: String] = [:]
+    /// The windows jumps left, for the Back action. In memory: window handles do not
+    /// outlive the process.
+    private var backHistory = BackHistory<Focus.Place>()
     private var lastPaintLog: String?
     private var lastAmbientLog: String?
     private var lastPresenceReason: String?
@@ -556,8 +559,22 @@ final class BoardController: ObservableObject {
             Log.write("key: slot \(slot) has no session")
             return
         }
+        // Read before the raise, which changes what is in front. Recorded only if the
+        // jump happened: otherwise you are still there, and Back would land in place.
+        let here = Focus.here()
         let outcome = Focus.raise(view)
+        if case .raised = outcome, let here { backHistory.record(here) }
         Log.write("key: jump to slot \(slot) -> \(outcome)")
+    }
+
+    /// Back to the window the last jump left, skipping any whose app has quit since.
+    private func goBack(key: String) {
+        while let place = backHistory.takeLatest() {
+            guard let app = Focus.restore(place) else { continue }
+            Log.write("key \(key): back to \(app.localizedName ?? "pid \(place.pid)")")
+            return
+        }
+        Log.write("key \(key): nothing to go back to")
     }
 
     private func perform(_ action: KeyAction, key: String) {
@@ -693,6 +710,9 @@ final class BoardController: ObservableObject {
 
         case .prevSession, .nextSession:
             stepSession(forward: action == .nextSession)
+
+        case .back:
+            goBack(key: key)
 
         case .arrowUp, .arrowDown, .arrowLeft, .arrowRight:
             let direction: Joystick.Direction = switch action {

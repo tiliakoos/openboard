@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import Foundation
 import OpenBoardKit
 
@@ -307,6 +308,62 @@ enum Focus {
         if let cached = slot.cmuxSurface { return cached }
         guard let pid = slot.pid else { return nil }
         return Cmux.surfaces(cli: cli)[pid]
+    }
+
+    // MARK: - going back
+
+    /// A window you were in, for the Back action. The window is nil for an app that had
+    /// none open.
+    struct Place: Equatable {
+        let pid: pid_t
+        let window: AXUIElement?
+    }
+
+    /**
+     The window in front right now.
+
+     The menu-bar popover can make OpenBoard itself the front app, and going back to
+     that is going nowhere — so the place is the app whose window is just behind it.
+     */
+    static func here() -> Place? {
+        guard var pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else {
+            return nil
+        }
+        if pid == ProcessInfo.processInfo.processIdentifier {
+            // Front to back; layer 0 is ordinary windows, not the menu bar or the Dock.
+            let windows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID)
+                as? [[String: Any]] ?? []
+            guard let behind = windows.lazy
+                .filter({ $0[kCGWindowLayer as String] as? Int == 0 })
+                .compactMap({ $0[kCGWindowOwnerPID as String] as? pid_t })
+                .first(where: { $0 != pid })
+            else { return nil }
+            pid = behind
+        }
+        var window: CFTypeRef?
+        AXUIElementCopyAttributeValue(
+            AXUIElementCreateApplication(pid), kAXFocusedWindowAttribute as CFString, &window
+        )
+        return Place(pid: pid, window: window.map { $0 as! AXUIElement })
+    }
+
+    /**
+     Bring a place back: its window, on whichever desktop it is, and its app.
+
+     Raising the window and making it main before activating is what makes macOS
+     switch to *that* window's desktop rather than to another window of the same app.
+     A window closed since is skipped, and the app comes forward on its own.
+
+     - Returns: the app, or nil when it has quit.
+     */
+    static func restore(_ place: Place) -> NSRunningApplication? {
+        guard let app = NSRunningApplication(processIdentifier: place.pid) else { return nil }
+        if let window = place.window,
+           AXUIElementPerformAction(window, kAXRaiseAction as CFString) == .success {
+            AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
+        }
+        app.activate()
+        return app
     }
 
     /// Whether an app with this bundle ID is already running, without launching it.
