@@ -337,6 +337,17 @@ func runTurnStateTests() {
         )
     }
 
+    test("split UTF-8 boundaries preserve complete tail records and skip partial JSON") {
+        let file = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ob-turn-\(UUID().uuidString).jsonl")
+        defer { try? FileManager.default.removeItem(at: file) }
+        var data = Data("é\n\(assistant)\n{\"type\":\"user\",\"message\":{\"content\":\"".utf8)
+        data.append(Data(repeating: 0x78, count: 64 * 1024 - data.count - 1))
+        data.append(contentsOf: "é".utf8)
+        try data.write(to: file)
+        expectEqual(TurnState.isWorking(transcriptPath: file.path), false)
+    }
+
     test("a restored working session keeps its state when the turn is still running") {
         // The whole point, end to end through the settle rule.
         let url = URL(fileURLWithPath: NSTemporaryDirectory())

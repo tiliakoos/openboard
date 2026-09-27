@@ -62,9 +62,8 @@ public enum TurnState {
         guard let size = try? handle.seekToEnd(), size > 0 else { return nil }
         let offset = size > UInt64(tailBudget) ? size - UInt64(tailBudget) : 0
         try? handle.seek(toOffset: offset)
-        guard let data = try? handle.readToEnd(), !data.isEmpty,
-              let text = String(data: data, encoding: .utf8)
-        else { return nil }
+        guard let data = try? handle.readToEnd(), !data.isEmpty else { return nil }
+        let text = String(decoding: data, as: UTF8.self)
 
         return isWorking(inTail: text, isWholeFile: offset == 0)
     }

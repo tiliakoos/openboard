@@ -138,7 +138,7 @@ public enum SessionTitle {
         }
         // The budget almost certainly cuts a line in half; dropping the partial tail
         // keeps the parser from failing on it.
-        guard var text = String(data: data, encoding: .utf8) else { return nil }
+        var text = String(decoding: data, as: UTF8.self)
         if let lastNewline = text.lastIndex(of: "\n") {
             text = String(text[..<lastNewline])
         }

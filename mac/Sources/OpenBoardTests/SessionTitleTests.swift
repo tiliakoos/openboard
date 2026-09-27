@@ -212,6 +212,18 @@ func runSessionTitleTests() {
         expect(SessionTitle.forSession(transcriptPath: "") == nil)
         expect(SessionTitle.forSession(transcriptPath: "/nope/missing.jsonl") == nil)
     }
+
+    test("a split UTF-8 character at the head boundary keeps complete entries") {
+        let file = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ob-title-\(UUID().uuidString).jsonl")
+        defer { try? FileManager.default.removeItem(at: file) }
+        var data = Data(line(["type": "ai-title", "aiTitle": "kept"]).utf8)
+        data.append(0x0A)
+        data.append(Data(repeating: 0x78, count: 512 * 1024 - data.count - 1))
+        data.append(contentsOf: "é".utf8)
+        try data.write(to: file)
+        expectEqual(SessionTitle.forSession(transcriptPath: file.path), "kept")
+    }
 }
 
 /**
