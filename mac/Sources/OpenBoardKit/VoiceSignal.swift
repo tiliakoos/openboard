@@ -65,11 +65,11 @@ public struct VoiceSignal: Sendable, Equatable {
 
     public func isActive(now: Date = Date()) -> Bool {
         guard let since else { return false }
-        guard now.timeIntervalSince(since) < limit else { return false }
         switch tracking {
         case .session:
             return true
         case .mic:
+            guard now.timeIntervalSince(since) < limit else { return false }
             // Dark until the mic actually starts. An unconfirmed belief is a request,
             // not a recording.
             return micConfirmed

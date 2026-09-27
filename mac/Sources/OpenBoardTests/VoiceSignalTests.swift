@@ -106,10 +106,12 @@ func runVoiceSignalTests() {
         expectEqual(signal.isActive(now: t0.addingTimeInterval(30)), false)
     }
 
-    test("session tracking still respects the limit") {
+    test("session tracking remains latched until explicitly ended") {
         var signal = VoiceSignal()
         signal.begin(now: t0, tracking: .session)
         expect(signal.isActive(now: t0.addingTimeInterval(179)))
+        expect(signal.isActive(now: t0.addingTimeInterval(180)))
+        signal.end()
         expectEqual(signal.isActive(now: t0.addingTimeInterval(180)), false)
     }
 
