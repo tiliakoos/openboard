@@ -1298,6 +1298,8 @@ final class BoardController: ObservableObject {
             if event.name == "SessionStart" { return }
         }
 
+        if event.name == "SessionStart", continuations[hookSessionID] != nil { return }
+
         // Dictation ends when what it was dictating is sent.
         if event.name == "UserPromptSubmit", voiceIsActive {
             setVoice(false, why: "prompt submitted")
