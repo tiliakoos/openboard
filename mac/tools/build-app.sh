@@ -26,6 +26,7 @@
 #   OB_VERSION    override the marketing version (default: nearest git tag)
 #   OB_BUILD      override the build number    (default: commit count)
 #   OB_IDENTITY   codesign identity to use     (default: best available, see below)
+#   OB_ENABLE_UPDATES=1 enables updates for releases and the localhost harness
 
 set -eu
 
@@ -46,37 +47,6 @@ INSTALL_DEST="/Applications/OpenBoard.app"
 # so changing it after a release silently revokes Input Monitoring and Accessibility for
 # every existing user.
 BUNDLE_ID="com.openboardapp.mac"
-
-# Sparkle's update-feed verification key. Public by definition — it checks signatures,
-# it cannot make them — so it belongs in the repo rather than in a secret store, and
-# committing it means a release built on any machine verifies against the same feed.
-#
-# Generate the pair once:
-#   mac/.build/artifacts/sparkle/Sparkle/bin/generate_keys
-# It puts the private half in the login keychain and prints the public half. Paste it
-# here. Losing the private key means no existing install can ever be updated again —
-# back it up with `generate_keys -x`, somewhere that is not this repo.
-SPARKLE_PUBLIC_KEY=${OB_SPARKLE_PUBLIC_KEY:-"CqSaxWCpPony+XcxRwCq73cnQ/g/Mw3mlEKYjYU0Z64="}
-
-# The update feed. Overridable only so tools/test-update.sh can point a throwaway build
-# at a local server and watch a real update happen without publishing anything.
-#
-# Nothing else should set this. The value compiled into a shipped build is read by that
-# install forever, so a release that goes out pointing at localhost is an install that
-# can never be updated again — see the note beside SUFeedURL below.
-FEED_URL=${OB_FEED_URL:-"https://updates.openboardapp.com/appcast.xml"}
-
-# Sparkle refuses a plain-HTTP feed unless the updates themselves are signed, which
-# ours are — but macOS App Transport Security blocks the request before Sparkle sees
-# it. The exception is added only for a local test feed, never for a real build.
-ATS_EXCEPTION=""
-case "$FEED_URL" in
-  http://localhost*|http://127.0.0.1*)
-    ATS_EXCEPTION='  <key>NSAppTransportSecurity</key>
-  <dict><key>NSAllowsLocalNetworking</key><true/></dict>'
-    printf 'NOTE: building against a LOCAL test feed — %s\n' "$FEED_URL"
-    ;;
-esac
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -107,12 +77,77 @@ VERSION=${OB_VERSION:-$(git -C "$ROOT" describe --tags --match 'v[0-9]*' --abbre
 [ -n "$VERSION" ] || VERSION="0.0.0"
 BUILD=${OB_BUILD:-$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)}
 
+# Resolve identity overrides to a valid certificate before deciding whether this build
+# may use the production feed.
+IDENTITIES=$(security find-identity -v -p codesigning 2>/dev/null || true)
+if [ -n "${OB_IDENTITY:-}" ]; then
+  IDENTITY=$OB_IDENTITY
+  MATCH=$(printf '%s\n' "$IDENTITIES" | awk -v id="$IDENTITY" '$2 == id || index($0, "\"" id "\"") { print $2 "|" $0; exit }')
+  if [ -n "$MATCH" ]; then
+    IDENTITY=${MATCH%%|*}
+    case "$MATCH" in
+      *"Developer ID Application:"*) IDENTITY_KIND="developer-id" ;;
+      *) IDENTITY_KIND="local" ;;
+    esac
+  elif [ "$IDENTITY" = "-" ]; then
+    IDENTITY_KIND="adhoc"
+  else
+    IDENTITY_KIND="local"
+  fi
+else
+  IDENTITY=$(printf '%s\n' "$IDENTITIES" | grep "Developer ID Application" | head -1 | awk '{print $2}')
+  IDENTITY_KIND="developer-id"
+  if [ -z "$IDENTITY" ]; then
+    IDENTITY=$(printf '%s\n' "$IDENTITIES" | grep "OpenBoard Local Signing" | head -1 | awk '{print $2}')
+    IDENTITY_KIND="local"
+  fi
+  if [ -z "$IDENTITY" ]; then
+    IDENTITY="-"
+    IDENTITY_KIND="adhoc"
+  fi
+fi
+
+UPDATES_ENABLED=false
+SPARKLE_PUBLIC_KEY=""
+FEED_URL=""
+ATS_EXCEPTION=""
+case "${OB_ENABLE_UPDATES:-0}" in
+  1)
+    SPARKLE_PUBLIC_KEY=${OB_SPARKLE_PUBLIC_KEY-"CqSaxWCpPony+XcxRwCq73cnQ/g/Mw3mlEKYjYU0Z64="}
+    FEED_URL=${OB_FEED_URL-"https://updates.openboardapp.com/appcast.xml"}
+    # An opted-in build without both would ship unable to ever update itself.
+    [ -n "$SPARKLE_PUBLIC_KEY" ] && [ -n "$FEED_URL" ] || {
+      printf 'OB_ENABLE_UPDATES=1 needs a non-empty feed URL and public key\n' >&2
+      exit 1
+    }
+    case "$FEED_URL" in
+      http://localhost:*|http://localhost/*|http://127.0.0.1:*|http://127.0.0.1/*)
+        ATS_EXCEPTION='  <key>NSAppTransportSecurity</key>
+  <dict><key>NSAllowsLocalNetworking</key><true/></dict>'
+        printf 'NOTE: building against a LOCAL test feed — %s\n' "$FEED_URL"
+        ;;
+      *)
+        [ "$IDENTITY_KIND" = "developer-id" ] || {
+          printf 'production updates require a valid Developer ID Application identity\n' >&2
+          exit 1
+        }
+        ;;
+    esac
+    UPDATES_ENABLED=true
+    ;;
+  0) ;;
+  *) printf 'OB_ENABLE_UPDATES must be 1 or unset\n' >&2; exit 2 ;;
+esac
+
 # Everything that changes the built bytes — the version included, or a retag with no
 # source change would keep the old bundle and quietly ship the wrong number.
 STAMP=$(cat "$ROOT"/Sources/OpenBoard/*.swift "$ROOT"/Sources/OpenBoardKit/*.swift \
-  "$ROOT"/Sources/openboard-hook/*.swift "$ROOT"/Sources/openboard-icon/*.swift "$0" \
+  "$ROOT"/Sources/openboard-hook/*.swift "$ROOT"/Sources/openboard-icon/*.swift \
+  "$ROOT/OpenBoard.entitlements" "$0" \
   | shasum -a 256 | cut -d" " -f1)
-STAMP="$STAMP-$CONFIG-$VERSION-$BUILD${UNIVERSAL:+-universal}-$(printf %s "$FEED_URL" | shasum -a 256 | cut -c1-8)"
+POLICY_STAMP=$(printf '%s\n' "$IDENTITY" "$IDENTITY_KIND" "$UPDATES_ENABLED" "$SPARKLE_PUBLIC_KEY" "$FEED_URL" \
+  | shasum -a 256 | cut -c1-16)
+STAMP="$STAMP-$CONFIG-$VERSION-$BUILD${UNIVERSAL:+-universal}-$POLICY_STAMP"
 
 if [ -z "$FORCE" ] && [ -d "$APP" ]; then
   EXISTING=$(/usr/libexec/PlistBuddy -c "Print :OBSourceStamp" "$APP/Contents/Info.plist" 2>/dev/null || true)
@@ -219,9 +254,8 @@ iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/OpenBoard.icns"
 
 # ---------------------------------------------------------------- Info.plist
 #
-# SUFeedURL and SUPublicEDKey are Sparkle's. They are written unconditionally: a build
-# with no update feed is a build that can never tell its user about a fix, and the
-# public key is public by definition — it verifies signatures, it does not make them.
+# Ordinary local builds carry no update feed or key. Releases and the localhost test
+# harness opt in explicitly.
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -271,7 +305,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 $ATS_EXCEPTION
   <key>SUPublicEDKey</key>
   <string>$SPARKLE_PUBLIC_KEY</string>
-  <key>SUEnableAutomaticChecks</key>    <true/>
+  <key>OBUpdatesEnabled</key>           <$UPDATES_ENABLED/>
+  <key>SUEnableAutomaticChecks</key>    <$UPDATES_ENABLED/>
   <key>SUScheduledCheckInterval</key>   <integer>86400</integer>
 
   <key>OBSourceStamp</key>              <string>$STAMP</string>
@@ -298,24 +333,6 @@ PLIST
 # Leaving it off a debug build costs nothing else: the timestamp is not part of the
 # designated requirement, so a debug build and a release build made from the same
 # certificate are still the same app to TCC, and permissions carry across both.
-if [ -n "${OB_IDENTITY:-}" ]; then
-  IDENTITY="$OB_IDENTITY"
-  IDENTITY_KIND="developer-id"
-else
-  IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
-    | grep "Developer ID Application" | head -1 | awk '{print $2}')
-  IDENTITY_KIND="developer-id"
-  if [ -z "$IDENTITY" ]; then
-    IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
-      | grep "OpenBoard Local Signing" | head -1 | awk '{print $2}')
-    IDENTITY_KIND="local"
-  fi
-  if [ -z "$IDENTITY" ]; then
-    IDENTITY="-"
-    IDENTITY_KIND="adhoc"
-  fi
-fi
-
 if [ "$IDENTITY_KIND" = "developer-id" ] && [ "$CONFIG" = "release" ]; then
   TS_FLAG="--timestamp"
   printf 'signing with Developer ID (timestamped)…\n'

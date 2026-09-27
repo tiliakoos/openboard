@@ -89,15 +89,17 @@ jobs:
           test ! -d "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices" \
             || { echo "XPCServices should have been stripped"; exit 1; }
 
-          # The feed URL is compiled in and unchangeable once shipped. A typo here is
-          # not recoverable for anyone who installed the build, so it is asserted.
+          # Ordinary CI builds must not check or update from the production feed.
           FEED=$(/usr/libexec/PlistBuddy -c "Print :SUFeedURL" "$APP/Contents/Info.plist")
-          test "$FEED" = "https://updates.openboardapp.com/appcast.xml" \
-            || { echo "unexpected SUFeedURL: $FEED"; exit 1; }
+          test -z "$FEED" || { echo "local build has an update feed: $FEED"; exit 1; }
 
-          # An empty public key ships an app that cannot ever update itself.
+          ENABLED=$(/usr/libexec/PlistBuddy -c "Print :OBUpdatesEnabled" "$APP/Contents/Info.plist")
+          test "$ENABLED" = false || { echo "local updates are enabled"; exit 1; }
+          AUTO=$(/usr/libexec/PlistBuddy -c "Print :SUEnableAutomaticChecks" "$APP/Contents/Info.plist")
+          test "$AUTO" = false || { echo "local automatic checks are enabled"; exit 1; }
+
           KEY=$(/usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" "$APP/Contents/Info.plist")
-          test -n "$KEY" || { echo "SUPublicEDKey is empty"; exit 1; }
+          test -z "$KEY" || { echo "local build has an update key"; exit 1; }
 
           # The hardened runtime blocks Apple events without this, and blocks them
           # *silently*: macOS returns errAEEventNotPermitted with no consent dialog, so

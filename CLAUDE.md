@@ -56,7 +56,7 @@ merged in (via PlistBuddy — `plutil` misreads the dotted key). Developer ID bu
 untouched.
 
 This locally built app does not auto-update, which is deliberate: it protects the local
-changes. Syncing from `upstream` *is* the update path. Do not reinstall the Homebrew cask
+changes. `build-app.sh` leaves the feed and key empty unless `OB_ENABLE_UPDATES=1`. Syncing from `upstream` *is* the update path. Do not reinstall the Homebrew cask
 — it would clobber this build.
 
 ## Commands
@@ -200,9 +200,10 @@ These read as arbitrary and are not:
 The bundle id (`com.openboardapp.mac`), the Sparkle feed URL
 (`https://updates.openboardapp.com/appcast.xml`) and the signing team are effectively
 immutable. macOS keys TCC grants and login-item registration off the bundle id, and
-installed copies read the feed URL forever. CI asserts both, plus the Sparkle embed, the
-inside-out signing of `openboard-hook`, and the `apple-events` entitlement — that last one
-shipped missing once and made Automation ungrantable *with no dialog at all*.
+installed copies read the feed URL forever. Only release builds carry the feed, so
+`release.sh` asserts it; CI asserts that ordinary builds have updates off, plus the Sparkle
+embed, the inside-out signing of `openboard-hook`, and the `apple-events` entitlement — that
+last one shipped missing once and made Automation ungrantable *with no dialog at all*.
 
 ## Logs
 

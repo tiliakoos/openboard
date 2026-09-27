@@ -26,6 +26,9 @@ tools/build-app.sh --install  # assemble, sign, install to /Applications
 tools/reload.sh               # rebuild, reinstall and relaunch in one step
 ```
 
+Ordinary local builds keep Sparkle updates off. `release.sh` enables them only with a
+valid Developer ID identity; `test-update.sh` opts into its localhost feed.
+
 You need the **macOS 26 SDK**. The app draws with Liquid Glass, and while every call is
 behind `if #available(macOS 26.0, *)` — so it runs correctly on macOS 14 without it —
 availability gating is a runtime check, and the symbols still have to exist at compile
@@ -92,7 +95,7 @@ hardware from every question that was never about hardware.
 ## What CI does
 
 Every push and pull request builds the app, runs the suite, assembles the `.app` bundle
-and asserts eight things about it. It uses no secrets, so it runs safely on a pull request
+and asserts ten things about it. It uses no secrets, so it runs safely on a pull request
 from a fork.
 
 The bundle assertions exist because unit tests cannot catch them: a Sparkle framework that

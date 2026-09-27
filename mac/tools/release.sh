@@ -137,7 +137,7 @@ fi
 # ---------------------------------------------------------------- build
 
 say "Building"
-OB_VERSION="$VERSION" OB_IDENTITY="$IDENTITY" \
+OB_ENABLE_UPDATES=1 OB_VERSION="$VERSION" OB_IDENTITY="$IDENTITY" \
   "$ROOT/tools/build-app.sh" --release --universal --force
 
 # A universal binary is the point of the flag; check it actually happened rather than
@@ -148,6 +148,16 @@ case "$ARCHS" in
   *arm64*x86_64*|*x86_64*arm64*) ;;
   *) die "Expected a universal binary, got: $ARCHS" ;;
 esac
+
+# Every installed copy reads the feed URL forever, and local builds now leave it empty,
+# so this is the one place its value is still checked.
+PLIST="$APP/Contents/Info.plist"
+FEED=$(/usr/libexec/PlistBuddy -c "Print :SUFeedURL" "$PLIST")
+[ "$FEED" = "https://updates.openboardapp.com/appcast.xml" ] || die "Unexpected SUFeedURL: $FEED"
+[ -n "$(/usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" "$PLIST")" ] || die "SUPublicEDKey is empty"
+[ "$(/usr/libexec/PlistBuddy -c "Print :OBUpdatesEnabled" "$PLIST")" = true ] \
+  || die "Updates are not enabled in this build"
+note "update feed $FEED"
 
 # ---------------------------------------------------------------- package
 

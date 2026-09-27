@@ -22,11 +22,8 @@ import OpenBoardKit
 
  ## Why it can be off
 
- `SUPublicEDKey` is empty in a local build, because signing the feed needs a private key
- that lives on one machine. Starting the updater without it produces a check that fails
- every time with a signature error nobody can act on, so the updater simply does not
- start. `isAvailable` is what the UI asks rather than hiding the failure behind a button
- that does nothing.
+ Ordinary local builds have no feed or public key. Releases and the localhost update
+ harness opt in, and `isAvailable` checks that policy before the UI offers an update.
 
  ## Why this tracks its own state
 
@@ -71,13 +68,14 @@ final class Updater: NSObject, ObservableObject {
     @Published private(set) var status: Status
     @Published private(set) var lastCheck: Date?
 
-    /// Whether this build can check at all — see the note on `SUPublicEDKey` above.
+    /// Whether this build can check at all — see "Why it can be off" above.
     ///
     /// Static because the answer is a property of the bundle, not of any instance, and
     /// the UI needs it while building the command table before an updater exists.
     static var isAvailable: Bool {
+        let enabled = Bundle.main.object(forInfoDictionaryKey: "OBUpdatesEnabled") as? Bool ?? false
         let key = Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String
-        return !(key ?? "").isEmpty
+        return enabled && !(key ?? "").isEmpty
     }
 
     private var controller: SPUStandardUpdaterController?
@@ -87,7 +85,7 @@ final class Updater: NSObject, ObservableObject {
         super.init()
 
         guard Self.isAvailable else {
-            Log.write("updates: disabled — this build has no SUPublicEDKey (local build)")
+            Log.write("updates: disabled for this build")
             return
         }
 

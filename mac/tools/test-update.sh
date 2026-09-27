@@ -77,7 +77,7 @@ mkdir -p "$SERVE"
 # afterwards so that it, not this, is what ends up in /Applications.
 
 say "Building $NEW_VERSION — the update"
-OB_VERSION="$NEW_VERSION" OB_BUILD="$NEW_BUILD" OB_FEED_URL="$FEED" \
+OB_ENABLE_UPDATES=1 OB_VERSION="$NEW_VERSION" OB_BUILD="$NEW_BUILD" OB_FEED_URL="$FEED" \
   "$ROOT/tools/build-app.sh" --force >/dev/null
 ditto -c -k --keepParent "$ROOT/dist/OpenBoard.app" "$SERVE/OpenBoard-$NEW_VERSION.zip"
 note "$(du -h "$SERVE/OpenBoard-$NEW_VERSION.zip" | cut -f1)"
@@ -152,7 +152,7 @@ note "$FEED"
 # ---------------------------------------------------------------- the older build
 
 say "Building and installing $OLD_VERSION — the one that updates"
-OB_VERSION="$OLD_VERSION" OB_BUILD="$OLD_BUILD" OB_FEED_URL="$FEED" \
+OB_ENABLE_UPDATES=1 OB_VERSION="$OLD_VERSION" OB_BUILD="$OLD_BUILD" OB_FEED_URL="$FEED" \
   "$ROOT/tools/build-app.sh" --force --install >/dev/null
 note "installed /Applications/OpenBoard.app"
 
