@@ -48,8 +48,8 @@ final class CountdownPlayer {
         log("fun mode: cancelled")
     }
 
-    func start(preferences: Preferences) {
-        guard !isRunning else { return }
+    func start(preferences: Preferences) -> Bool {
+        guard !isRunning else { return false }
         let configured = preferences.countdown.mediaDir
         let library = AppPaths.mediaLibrary()
         guard let media = Countdown.mediaDirectory(configured: configured) else {
@@ -57,7 +57,7 @@ final class CountdownPlayer {
                 fun mode: nothing to play. Put a folder holding a video and its \
                 analysis.json in \(AppPaths.media().path)
                 """)
-            return
+            return false
         }
         // Say which one, and say it every time: the choice is only obvious while there
         // is exactly one folder, and that stops being true the moment a second lands.
@@ -70,11 +70,11 @@ final class CountdownPlayer {
         }
         guard let analysis = Countdown.loadAnalysis(directory: media) else {
             log("fun mode: no analysis.json in \(media.path) — nothing to sync to")
-            return
+            return false
         }
         guard let video = Countdown.findVideo(directory: media) else {
             log("fun mode: no video in \(media.path)")
-            return
+            return false
         }
         log("fun mode: media from \(media.path)")
 
@@ -88,6 +88,7 @@ final class CountdownPlayer {
             self.isRunning = false
             self.finished()
         }
+        return true
     }
 
     // MARK: - the show

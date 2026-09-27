@@ -1996,13 +1996,13 @@ final class BoardController: ObservableObject {
                 Task { await self.paint() }
             }
         )
+        guard player.start(preferences: model.preferences) else { return }
         countdown = player
         model.funModeRunning = true
         lastRing = nil
         // The ring belongs to the show for the duration; a status repaint mid-song
         // restarts the firmware's animation and reads as flicker.
         ringBusyUntil = Date().addingTimeInterval(400)
-        player.start(preferences: model.preferences)
     }
 
     func play(show: Show) {
@@ -2032,6 +2032,7 @@ final class BoardController: ObservableObject {
             try? await self.device.send(
                 lighting: CodexProtocol.LightingConfig(keys: .off, ambient: .off)
             )
+            self.lastRing = nil
             self.runningShow = nil
             self.model.runningShow = nil
             self.ringBusyUntil = .distantPast
