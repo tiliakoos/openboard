@@ -199,11 +199,18 @@ public enum HookInstall {
         for event in events {
             // Preserve any non-OpenBoard hook groups on this event; someone else's
             // tooling may share it, and dropping their entry would break their setup.
-            let existing = (hooks[event.name] as? [[String: Any]] ?? []).filter { group in
-                let commands = (group["hooks"] as? [[String: Any]] ?? [])
-                    .compactMap { $0["command"] as? String }
-                return !commands.contains { $0.contains("openboard-hook") }
-            }
+            let existing = (hooks[event.name] as? [[String: Any]] ?? [])
+                .compactMap { group -> [String: Any]? in
+                    let original = group["hooks"] as? [[String: Any]] ?? []
+                    let preserved = original.filter {
+                        ($0["command"] as? String)?.contains("openboard-hook") != true
+                    }
+                    guard preserved.count != original.count else { return group }
+                    guard !preserved.isEmpty else { return nil }
+                    var group = group
+                    group["hooks"] = preserved
+                    return group
+                }
 
             var group: [String: Any] = [
                 "hooks": [[
@@ -259,16 +266,18 @@ public enum HookInstall {
         let target = url ?? settingsURL()
         var existing: [String: Any] = [:]
 
-        if let data = try? Data(contentsOf: target), !data.isEmpty {
-            guard let parsed = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-            else { throw InstallError.unreadable }
-            existing = parsed
-
+        if FileManager.default.fileExists(atPath: target.path) {
+            guard let data = try? Data(contentsOf: target) else { throw InstallError.unreadable }
+            if !data.isEmpty {
+                guard let parsed = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+                else { throw InstallError.unreadable }
+                existing = parsed
+            }
             let stamp = ISO8601DateFormatter().string(from: Date())
                 .replacingOccurrences(of: ":", with: "-")
             let backup = target.deletingLastPathComponent()
                 .appendingPathComponent("settings.backup-\(stamp).json")
-            try? data.write(to: backup)
+            try data.write(to: backup)
         }
 
         let updated = wiring(into: existing, command: command)

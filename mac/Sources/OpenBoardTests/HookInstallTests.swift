@@ -133,19 +133,33 @@ func runHookInstallTests() {
     test("installing preserves another tool's hook on the same event") {
         // Sharing an event is normal. Replacing the array would silently break
         // somebody else's tooling, and they would have no idea why.
-        let theirs = group("/usr/local/bin/somebody-else --on Stop")
+        var shared = group("\(command) --event Stop", matcher: "shared")
+        shared["metadata"] = "keep"
+        shared["hooks"] = [
+            ["type": "command", "command": "\(command) --event Stop"],
+            ["type": "command", "command": "/usr/local/bin/somebody-else --on Stop"],
+        ]
+        let theirs = group("/usr/local/bin/another-tool --on Stop")
         let written = HookInstall.wiring(
-            into: ["hooks": ["Stop": [theirs]]], command: command
+            into: ["hooks": ["Stop": [shared, theirs]]], command: command
         )
         let groups = try Harness.require(
             (written["hooks"] as? [String: Any])?["Stop"] as? [[String: Any]]
         )
-        expectEqual(groups.count, 2, "the other tool's hook was dropped")
-        let commands = groups.flatMap { group -> [String] in
-            (group["hooks"] as? [[String: Any]] ?? []).compactMap { $0["command"] as? String }
+        expectEqual(groups.count, 3, "another hook group was dropped")
+        expectEqual(groups[0]["matcher"] as? String, "shared")
+        expectEqual(groups[0]["metadata"] as? String, "keep")
+        let sharedHooks = try Harness.require(groups[0]["hooks"] as? [[String: Any]])
+        expectEqual(sharedHooks.count, 1)
+        expect((sharedHooks[0]["command"] as? String)?.contains("somebody-else") == true)
+        expect(
+            (groups[1]["hooks"] as? [[String: Any]])?.first?["command"] as? String
+                == "/usr/local/bin/another-tool --on Stop"
+        )
+        let commands = groups.flatMap {
+            ($0["hooks"] as? [[String: Any]] ?? []).compactMap { $0["command"] as? String }
         }
-        expect(commands.contains { $0.contains("somebody-else") })
-        expect(commands.contains { $0.contains("openboard-hook") })
+        expectEqual(commands.filter { $0.contains("openboard-hook") }.count, 1)
     }
 
     test("reinstalling does not stack duplicate hooks") {
@@ -234,13 +248,15 @@ func runHookInstallTests() {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
         let url = dir.appendingPathComponent("settings.json")
-        try Data("{\"model\":\"opus\"}".utf8).write(to: url)
+        let original = Data("{\"model\":\"opus\"}".utf8)
+        try original.write(to: url)
 
         try HookInstall.install(command: command, url: url, fileExists: { _ in true })
 
         let backups = (try FileManager.default.contentsOfDirectory(atPath: dir.path))
             .filter { $0.hasPrefix("settings.backup-") }
         expectEqual(backups.count, 1, "no backup was taken")
+        expectEqual(try Data(contentsOf: dir.appendingPathComponent(backups[0])), original)
 
         let audit = HookInstall.audit(
             settings: HookInstall.loadSettings(url: url),
@@ -249,6 +265,29 @@ func runHookInstallTests() {
         )
         expect(audit.isHealthy, "the file it just wrote does not pass its own audit")
         expectEqual(HookInstall.loadSettings(url: url)?["model"] as? String, "opus")
+    }
+
+    test("install refuses replacement when its backup cannot be written") {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ob-settings-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("settings.json")
+        let original = Data("{\"model\":\"opus\"}".utf8)
+        try original.write(to: url)
+        let formatter = ISO8601DateFormatter()
+        let now = Date()
+        for offset in -1...1 {
+            let stamp = formatter.string(from: now.addingTimeInterval(Double(offset)))
+                .replacingOccurrences(of: ":", with: "-")
+            try FileManager.default.createDirectory(
+                at: dir.appendingPathComponent("settings.backup-\(stamp).json"),
+                withIntermediateDirectories: false
+            )
+        }
+
+        expect((try? HookInstall.install(command: command, url: url, fileExists: { _ in true })) == nil)
+        expectEqual(try Data(contentsOf: url), original)
     }
 }
 
