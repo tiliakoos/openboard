@@ -79,11 +79,9 @@ public actor HIDWriteLock {
         }
 
         busy = true
+        defer { busy = false }
         let descriptor = try acquire(timeout: timeout)
-        defer {
-            release(descriptor)
-            busy = false
-        }
+        defer { release(descriptor) }
         return try await body()
     }
 

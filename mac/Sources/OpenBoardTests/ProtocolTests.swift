@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import OpenBoardKit
 
 /**
@@ -339,6 +340,58 @@ func runLockTests() async {
         }
         if done.wait(timeout: .now() + 20) == .timedOut {
             expect(false, "timed out — the lock was not released on throw")
+        }
+    }
+
+    test("failed acquisition does not poison later writers") {
+        let path = HIDWriteLock.defaultLockPath()
+        try FileManager.default.createDirectory(
+            at: path.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        let descriptor = open(path.path, O_RDWR | O_CREAT, 0o600)
+        expect(descriptor >= 0)
+        guard descriptor >= 0 else { return }
+        guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
+            let failure = errno
+            close(descriptor)
+            if failure == EWOULDBLOCK {
+                skip("another process owns the shared HID lock")
+            } else {
+                expect(
+                    false,
+                    "could not acquire the shared HID lock: \(String(cString: strerror(failure)))"
+                )
+            }
+            return
+        }
+        defer {
+            flock(descriptor, LOCK_UN)
+            close(descriptor)
+        }
+
+        let lock = HIDWriteLock()
+        let done = DispatchSemaphore(value: 0)
+        Task {
+            do {
+                _ = try await lock.withLock(timeout: 0.05) { true }
+                expect(false, "an externally held lock was acquired")
+            } catch let error as HIDWriteLock.LockError {
+                if case .busy = error {} else { expect(false, "unexpected lock error: \(error)") }
+            } catch {
+                expect(false, "unexpected lock error: \(error)")
+            }
+
+            flock(descriptor, LOCK_UN)
+            do {
+                let ok = try await lock.withLock(timeout: 1) { true }
+                expect(ok)
+            } catch {
+                expect(false, "the lock stayed wedged after acquisition failed: \(error)")
+            }
+            done.signal()
+        }
+        if done.wait(timeout: .now() + 10) == .timedOut {
+            expect(false, "timed out waiting for recovery after lock acquisition failed")
         }
     }
 }
