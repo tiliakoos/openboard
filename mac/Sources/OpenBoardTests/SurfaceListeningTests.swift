@@ -209,7 +209,8 @@ func runSurfaceListeningTests() {
             "the hook path must refuse a muted surface before it claims a key"
         )
         expect(controller.contains("private func sweepUnlistened()"))
-        expect(controller.contains("mutedPIDs.removeAll()"), "a surface switched back on must claim again")
+        expect(controller.contains("mutedSessions.removeAll()"), "a surface switched back on must claim again")
+        expect(!controller.contains("mutedPIDs"), "PID reuse must not retain a stale refusal")
     }
 
     test("a known iTerm2 session does not send an Apple event to Terminal") {

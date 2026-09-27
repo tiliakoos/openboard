@@ -70,10 +70,11 @@ final class BoardController: ObservableObject {
     private var lastOpenLog: String?
     private var lastPresenceLog: String?
     private var lastCmuxLog: String?
-    /// Processes already found to belong to a muted surface, so the walk up the process
-    /// tree is paid once per session rather than once per hook. Cleared whenever the
-    /// setting changes, because the answer then does too.
-    private var mutedPIDs: Set<Int> = []
+    /// Sessions already found to belong to a muted surface, so the walk up the process
+    /// tree is paid once per session rather than once per hook. Keyed by session id,
+    /// not pid, because the OS reuses pids. Cleared whenever the setting changes,
+    /// because the answer then does too.
+    private var mutedSessions: Set<String> = []
     /// Background (bridge) session id -> the interactive session it continues. Never persisted.
     private var continuations: [String: String] = [:]
     /// The windows jumps left, for the Back action. In memory: window handles do not
@@ -201,8 +202,8 @@ final class BoardController: ObservableObject {
         // rather than one that arrives whenever those sessions happen to end.
         //
         // The cache goes first: a surface switched back on must be able to claim again,
-        // and a pid remembered as muted would keep being refused.
-        mutedPIDs.removeAll()
+        // and a session remembered as muted would keep being refused.
+        mutedSessions.removeAll()
         sweepUnlistened()
         publish()
 
@@ -1321,6 +1322,7 @@ final class BoardController: ObservableObject {
          old chat's title until the next enrich.
          */
         if state == .ended {
+            mutedSessions.remove(sessionID)
             if let entry = registry.entry(forSession: sessionID) {
                 SessionTitle.forget(transcriptPath: entry.transcriptPath)
                 registry.release(sessionID: sessionID)
@@ -1378,17 +1380,19 @@ final class BoardController: ObservableObject {
          hooks arrive several times a minute per session, and every one of them would
          otherwise pay for the walk up the process tree just to be refused again.
         */
+        // A resume can bring a session back in another surface, so a start asks again.
+        if event.name == "SessionStart" { mutedSessions.remove(sessionID) }
         if registry.entry(forSession: sessionID) == nil, let pid = hookPID {
-            let host = mutedPIDs.contains(pid) ? nil : ProcessAncestry.host(ofPID: pid)
+            let host = mutedSessions.contains(sessionID) ? nil : ProcessAncestry.host(ofPID: pid)
             if host == .headless {
-                mutedPIDs.insert(pid)
+                mutedSessions.insert(sessionID)
                 Log.write("hook \(event.name): refused (headless-host pid=\(pid))")
                 return
             }
             if let host, !model.preferences.listens(to: host) {
-                mutedPIDs.insert(pid)
+                mutedSessions.insert(sessionID)
             }
-            if mutedPIDs.contains(pid) {
+            if mutedSessions.contains(sessionID) {
                 Log.write("hook \(event.name): refused (not listening to that surface)")
                 return
             }
@@ -1415,12 +1419,11 @@ final class BoardController: ObservableObject {
             // The tty is what makes a jump exact — Terminal's dictionary exposes it
             // per tab. Omitting it here meant an adopted session could be seen but not
             // raised: "jump to slot 1 -> noWindow".
-            let adoptedPID = event.environment["CLAUDE_PID"].flatMap(Int.init)
             _ = registry.claim(
                 sessionID: sessionID,
                 cwd: event.cwd,
-                pid: adoptedPID,
-                tty: adoptedPID.flatMap(Self.tty(forPID:)),
+                pid: hookPID,
+                tty: hookPID.flatMap(Self.tty(forPID:)),
                 transcriptPath: event.transcriptPath
                     ?? SessionTranscript.locate(sessionID: sessionID),
                 entrypoint: event.entrypoint,
@@ -1466,12 +1469,11 @@ final class BoardController: ObservableObject {
         }
 
         if event.name == "SessionStart" {
-            let pid = event.environment["CLAUDE_PID"].flatMap(Int.init)
             _ = registry.claim(
                 sessionID: sessionID,
                 cwd: event.cwd,
-                pid: pid,
-                tty: pid.flatMap(Self.tty(forPID:)),
+                pid: hookPID,
+                tty: hookPID.flatMap(Self.tty(forPID:)),
                 transcriptPath: event.transcriptPath
                     ?? SessionTranscript.locate(sessionID: sessionID),
                 entrypoint: event.entrypoint,
