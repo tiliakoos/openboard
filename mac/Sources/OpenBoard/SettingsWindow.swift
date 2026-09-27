@@ -591,7 +591,7 @@ struct CapInspector: View {
                         .foregroundStyle(.tertiary)
                     Picker("", selection: encoderActionBinding(\.click)) {
                         Text("nothing").tag(KeyAction?.none)
-                        ForEach(KeyAction.allCases, id: \.self) { action in
+                        ForEach(KeyAction.allCases.filter { $0 != .voiceTalk }, id: \.self) { action in
                             Text(action.long).tag(KeyAction?.some(action))
                         }
                     }
@@ -670,7 +670,8 @@ struct CapInspector: View {
                 if board.actions[cell.id]?.needsShortcut == true {
                     shortcutSection(key: cell.id, allowHold: true)
                 }
-                if board.actions[cell.id]?.isBuiltInVoice == true {
+                if board.actions[cell.id]?.isBuiltInVoice == true,
+                   board.actions[cell.id] != .voiceTalk {
                     voiceTrackingSection(binding: builtInVoiceTrackingBinding)
                 }
                 capPicker(allowNone: cell.isAgent)
@@ -695,8 +696,8 @@ struct CapInspector: View {
     }
 
     /// The chord a `.shortcut` binding sends and, on the action caps only, whether the
-    /// pad key taps or holds it. Shaped like the snippet block. The dial's hold and the
-    /// stick have no release edge, so they are never offered hold.
+    /// pad key taps or holds it. Shaped like the snippet block. Only action caps offer
+    /// shortcut holds; encoder and stick shortcuts remain tap-only.
     @ViewBuilder
     private func shortcutSection(key: String, allowHold: Bool) -> some View {
         let recorded = board.preferences.shortcuts[key]

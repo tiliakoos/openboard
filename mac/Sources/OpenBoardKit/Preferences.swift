@@ -104,8 +104,9 @@ public struct Preferences: Equatable, Sendable {
     /// a bound chord types nothing, ever. Off by default because it only works once
     /// the chord is added to `~/.claude/keybindings.json`.
     public var voiceChord: Bool
-    /// How built-in voice keys (`voice-tap`, `voice-talk`, `voice-toggle`) track the
-    /// dictation ring. Custom shortcuts carry their own on `Shortcut.voiceTracking`.
+    /// How the built-in `voice-tap` and `voice-toggle` keys track the dictation ring;
+    /// `voice-talk` lights only while held. Custom shortcuts carry their own on
+    /// `Shortcut.voiceTracking`.
     public var voiceTracking: VoiceTracking
     /// Whether pressing an agent key that holds a session brings that session forward.
     /// Off leaves the pad's session keys inert; the popover and the next/previous

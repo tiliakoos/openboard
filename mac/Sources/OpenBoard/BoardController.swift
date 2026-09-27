@@ -37,7 +37,10 @@ final class BoardController: ObservableObject {
     private var calibrationTask: Task<Void, Never>?
     /// Fun mode, while it owns the pad.
     private var countdown: CountdownPlayer?
-    private lazy var pushToTalk = PushToTalk(log: { Log.write($0) })
+    private lazy var pushToTalk = PushToTalk(
+        log: { Log.write($0) },
+        timedOut: { [weak self] key in self?.holdTimedOut(key) }
+    )
     private var focusWatcher: FocusWatcher?
     /// What is in front of you — a Terminal tab by tty, a cmux surface by id, or a VS
     /// Code window by title. Drives `viewing`, and is never written into the registry —
@@ -106,6 +109,15 @@ final class BoardController: ObservableObject {
         // missed the long-press keys, whose "ENC.long" is not a key the map has.
         if pushToTalk.isDictation { return true }
         return voice.isActive()
+    }
+
+    /// A hold the pad never released. The belief a voice shortcut's press started has
+    /// to end with it, or the ring stays lit for a dictation nobody is holding.
+    private func holdTimedOut(_ key: String) {
+        if model.actions[key] == .shortcut, model.preferences.shortcuts[key]?.voice == true {
+            setVoice(false, why: "hold timed out")
+        }
+        Task { await paint() }
     }
 
     private func setVoice(_ active: Bool, why: String, tracking: VoiceTracking = .mic) {
@@ -543,7 +555,8 @@ final class BoardController: ObservableObject {
             if key == "ENC_CLK" {
                 encoderReleased()
             } else if pushToTalk.heldBy == key {
-                let voiceShortcut = model.preferences.shortcuts[key]?.voice == true
+                let voiceShortcut = model.actions[key] == .shortcut
+                    && model.preferences.shortcuts[key]?.voice == true
                 pushToTalk.end()
                 if voiceShortcut { setVoice(false, why: "shortcut released") }
                 Task { await paint() }
@@ -637,8 +650,9 @@ final class BoardController: ObservableObject {
             // rather than left to the 60s backstop.
             let canHold = BoardLayout.cells.contains { ($0.isAction || $0.isAgent) && $0.id == key }
             if shortcut.mode == .hold, canHold {
-                pushToTalk.begin(shortcut, key: key)
-                if shortcut.voice, pushToTalk.isHeld {
+                // Gated on begin's verdict, not `isHeld`: another key's hold used to
+                // pass that check and start a belief this key could never release.
+                if pushToTalk.begin(shortcut, key: key), shortcut.voice {
                     setVoice(true, why: "shortcut hold", tracking: shortcut.voiceTracking)
                 }
             } else {
@@ -688,7 +702,13 @@ final class BoardController: ObservableObject {
         case .voiceTalk:
             // The release edge ends it — see PushToTalk for why this is never trusted
             // to happen on its own.
-            pushToTalk.begin(key: key, dictation: true)
+            guard key == "ENC.long"
+                || BoardLayout.cells.contains(where: { ($0.isAction || $0.isAgent) && $0.id == key })
+            else {
+                Log.write("key \(key): hold to dictate needs a release edge")
+                return
+            }
+            if pushToTalk.begin(key: key, dictation: true) { Task { await paint() } }
 
         case .voiceToggle:
             let result = Actions.toggleVoice()
@@ -1059,7 +1079,12 @@ final class BoardController: ObservableObject {
     private func encoderReleased() {
         encoderHoldTask?.cancel()
         encoderHoldTask = nil
-        switch encoderClick.release() {
+        let release = encoderClick.release()
+        if pushToTalk.heldBy == "ENC.long" {
+            pushToTalk.end()
+            Task { await paint() }
+        }
+        switch release {
         case .short:
             guard let action = model.preferences.encoder.click else { return }
             perform(action, key: "ENC")

@@ -26,6 +26,9 @@ import OpenBoardKit
 @MainActor
 final class PushToTalk {
     private let log: (String) -> Void
+    /// Told which key's hold the backstop released, so the owner can end what the
+    /// press started — a voice shortcut's ring must not outlive its hold.
+    private let timedOut: (String) -> Void
     private var releaseTask: Task<Void, Never>?
     /// What is down, and which pad key put it there. Only that key's release ends it;
     /// otherwise any other key's release would end the dictation.
@@ -42,20 +45,21 @@ final class PushToTalk {
     /// missed release is an annoyance rather than a mystery.
     var maxHoldSeconds: Int = 60
 
-    init(log: @escaping (String) -> Void) {
+    init(log: @escaping (String) -> Void, timedOut: @escaping (String) -> Void) {
         self.log = log
+        self.timedOut = timedOut
     }
 
     /// Begin a hold. Idempotent: a repeat `down` extends nothing and starts nothing.
-    func begin(_ shortcut: Shortcut = .space, key: String, dictation: Bool = false) {
+    func begin(_ shortcut: Shortcut = .space, key: String, dictation: Bool = false) -> Bool {
         guard !isHeld else {
             log("hold: already held, ignoring a second press")
-            return
+            return false
         }
         let result = Actions.hold(shortcut, down: true)
         guard result.ok else {
             log("hold: could not press \(shortcut.label) — \(result.detail)")
-            return
+            return false
         }
         holding = shortcut
         heldBy = key
@@ -72,8 +76,11 @@ final class PushToTalk {
             // an event was lost, and the user needs to know their key is unreliable
             // rather than discovering it through corrupted typing later.
             self.log("hold: NO RELEASE after \(maxHoldSeconds)s — releasing anyway")
+            let key = self.heldBy
             self.end(reason: "timeout")
+            if let key { self.timedOut(key) }
         }
+        return true
     }
 
     /// End a hold. Safe to call when nothing is held.

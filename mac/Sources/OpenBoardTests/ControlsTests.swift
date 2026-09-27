@@ -171,6 +171,25 @@ func runHoldTests() {
         )
     }
 
+    test("a held dictation shortcut keeps its ring tracking") {
+        // The hold once lit the ring by ownership alone, ignoring the shortcut's
+        // "Follow the mic" / "Until next press" choice. The belief must start with
+        // the shortcut's tracking, and end on release and on the timeout backstop.
+        let controller = (try? String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("OpenBoard/BoardController.swift"),
+            encoding: .utf8
+        )) ?? ""
+        expect(!controller.isEmpty, "BoardController.swift did not read")
+        expect(
+            controller.contains("setVoice(true, why: \"shortcut hold\", tracking: shortcut.voiceTracking)"),
+            "a held voice shortcut must start the belief with its own tracking"
+        )
+        expect(controller.contains("setVoice(false, why: \"shortcut released\")"))
+        expect(controller.contains("setVoice(false, why: \"hold timed out\")"))
+    }
+
     test("a wide keycap's release reports the owning key") {
         // ACT10 and ACT11 are one cap. If the release came back as ACT11 the hold
         // would never end, because the binding lives on ACT10.
