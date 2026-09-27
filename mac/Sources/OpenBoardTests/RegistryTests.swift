@@ -34,6 +34,15 @@ func runRegistryTests() {
         expectEqual(registry.entries.count, 1)
     }
 
+    test("an unknown pid is not treated as dead for reclaim") {
+        var registry = SessionRegistry()
+        let now = Date()
+        let entry = try Harness.require(
+            registry.claim(sessionID: "unknown", now: now, isAlive: neverAlive).entry
+        )
+        expect(!registry.isReclaimable(entry, now: now, isAlive: neverAlive))
+    }
+
     test("one tab, one key — a cleared session reuses its own slot") {
         // `/clear` mints a fresh session_id inside the same process. Without this a
         // single tab burns another key every time and the board fills with dead

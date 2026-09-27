@@ -119,7 +119,7 @@ public struct SessionRegistry: Sendable, Equatable {
         isAlive: (Int?) -> Bool = SessionRegistry.processIsAlive
     ) -> Bool {
         if entry.state == .ended { return true }
-        if !isAlive(entry.pid) { return true }
+        if let pid = entry.pid, !isAlive(pid) { return true }
         return now.timeIntervalSince(entry.updatedAt) > staleInterval
     }
 
