@@ -18,8 +18,7 @@ import SwiftUI
 final class BoardModel: ObservableObject {
     @Published private(set) var slots: [SlotView] = SlotView.emptyBoard
     @Published private(set) var device: DeviceStatus = .unknown
-    /// Attached by cable. Charging, and off Bluetooth for as long as it is — which is
-    /// why the battery percentage stops updating and must not be shown as if it had.
+    /// Attached by cable; that alone does not mean the battery is charging.
     @Published private(set) var isWired = false
     /// The attached pad's hardware serial, or nil when nothing is attached. The key a
     /// custom name is filed under — see `Preferences.deviceNames`.
@@ -144,7 +143,7 @@ final class BoardModel: ObservableObject {
 
     func apply(deviceSerial: String?) { self.deviceSerial = deviceSerial }
 
-    func apply(padStatus: PadStatus) { self.padStatus = padStatus }
+    func apply(padStatus: PadStatus?) { self.padStatus = padStatus }
 }
 
 /// One of the six keys, as the UI needs it.

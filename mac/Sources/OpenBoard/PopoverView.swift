@@ -142,7 +142,7 @@ struct PopoverView: View {
 
             if board.device.isUsable {
                 BatteryBadge(
-                    percent: board.padStatus?.battery ?? battery.percent,
+                    percent: board.padStatus?.battery ?? (board.isWired ? nil : battery.percent),
                     isCharging: board.padStatus?.isCharging ?? board.isWired
                 )
             }
@@ -562,18 +562,7 @@ struct StateBadge: View {
  */
 struct BatteryBadge: View {
     let percent: Int?
-    /**
-     On the cable.
-
-     The percentage comes from the GATT battery service, which is only reachable over
-     Bluetooth — and plugging the pad in drops that link entirely. So while charging
-     there is no reading to be had, and the last one is minutes or hours old.
-
-     Showing that stale number beside a charging pad is the kind of quiet lie this app
-     exists not to tell: it would sit at 35% while the thing filled up. The bolt says
-     what is actually known — attached to power, percentage unavailable — and the badge
-     stops pretending to a live reading.
-     */
+    /// Reported by the pad, or assumed from the cable until it reports.
     var isCharging: Bool = false
 
     private var tint: Color {
@@ -591,7 +580,7 @@ struct BatteryBadge: View {
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(tint)
             }
-            Text(isCharging ? "USB" : (percent.map { "\($0)%" } ?? "—"))
+            Text(percent.map { "\($0)%" } ?? "—")
                 .font(.system(size: 11.5, weight: .medium).monospacedDigit())
                 .foregroundStyle(tint)
 
@@ -599,7 +588,7 @@ struct BatteryBadge: View {
                 RoundedRectangle(cornerRadius: 2.5)
                     .strokeBorder(tint.opacity(0.55), lineWidth: 1)
                     .frame(width: 22, height: 11)
-                if let percent, !isCharging {
+                if let percent {
                     RoundedRectangle(cornerRadius: 1.5)
                         .fill(tint)
                         // Never wider than the shell, and never invisible at 1% —
@@ -617,8 +606,7 @@ struct BatteryBadge: View {
             }
         }
         .help(isCharging
-            ? "Plugged in over USB. The battery level is published over Bluetooth, "
-                + "which the pad drops while it is on the cable."
+            ? percent.map { "Charging · \($0)% battery" } ?? "Charging; battery level not reported."
             : percent == nil
                 ? "Battery not read yet — the pad may be asleep."
                 : "Codex Micro battery")

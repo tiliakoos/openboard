@@ -1679,7 +1679,9 @@ final class BoardController: ObservableObject {
         do {
             try device.open()
             deviceIsOpen = true
+            statusAskedAt = .distantPast
             lastOpenLog = Log.changed("device open", last: lastOpenLog, to: "yes")
+            await askStatus()
         } catch {
             deviceIsOpen = false
             // The distinction that matters: denied is a permission the user can grant,
@@ -1702,17 +1704,19 @@ final class BoardController: ObservableObject {
     }
 
     private func closeDeviceSync() {
-        guard deviceIsOpen else { return }
-        device.close()
-        deviceIsOpen = false
+        if deviceIsOpen {
+            device.close()
+            deviceIsOpen = false
+        }
+        model.apply(padStatus: nil)
     }
 
     private func publishDeviceStatus(present: Bool) async {
         if !present {
-            // Ask *why* only when something is already wrong: system_profiler takes
-            // about a second, which is far too slow for the 2s presence poll and
-            // pointless while the pad is working.
-            let presence = DeviceDiagnostics.presence()
+            let presence = await Task.detached(priority: .utility) {
+                DeviceDiagnostics.presence()
+            }.value
+            guard !Task.isCancelled, !surveyPad().found else { return }
             lastPresenceReason = Log.changed("device missing", last: lastPresenceReason, to: String(describing: presence))
             switch presence {
             case .pairedButAsleep: model.apply(device: .bluetoothDisconnected)
@@ -1942,6 +1946,7 @@ final class BoardController: ObservableObject {
     }
 
     private func apply(_ status: PadStatus) {
+        guard deviceIsOpen else { return }
         model.apply(padStatus: status)
         lastStatusLog = Log.changed(
             "pad", last: lastStatusLog,
