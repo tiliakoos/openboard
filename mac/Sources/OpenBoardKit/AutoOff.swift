@@ -12,10 +12,14 @@ public enum AutoOff {
     /// `3:30` or `10` (minutes), clamped to `range`. Nil when it is not a time.
     public static func seconds(from text: String) -> Int? {
         let parts = text.trimmingCharacters(in: .whitespaces).split(separator: ":", omittingEmptySubsequences: false)
-        guard (1...2).contains(parts.count), let minutes = Int(parts[0]) else { return nil }
-        var seconds = minutes * 60
+        guard (1...2).contains(parts.count),
+              let minutes = Int(parts[0]), minutes >= 0
+        else { return nil }
+        var seconds = min(minutes, range.upperBound / 60) * 60
         if parts.count == 2 {
-            guard parts[1].count == 2, let extra = Int(parts[1]), extra < 60 else { return nil }
+            guard parts[1].count == 2, let extra = Int(parts[1]),
+                  (0..<60).contains(extra)
+            else { return nil }
             seconds += extra
         }
         return min(max(seconds, range.lowerBound), range.upperBound)

@@ -18,7 +18,8 @@ func runAutoOffTests() {
         expectEqual(AutoOff.seconds(from: " 10 "), 600)
         expectEqual(AutoOff.seconds(from: "0:05"), 30)
         expectEqual(AutoOff.seconds(from: "90"), 3600)
-        for junk in ["", "abc", "3:5", "3:75", "1:2:3", ":30"] {
+        expectEqual(AutoOff.seconds(from: String(Int.max)), 3600)
+        for junk in ["", "abc", "3:5", "3:75", "1:-5", "1:2:3", ":30"] {
             expect(AutoOff.seconds(from: junk) == nil, "\(junk) was read as a time")
         }
         expectEqual(AutoOff.label(210), "3:30")
