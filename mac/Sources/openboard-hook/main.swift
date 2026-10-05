@@ -44,8 +44,8 @@ if let eventName, object["hook_event_name"] == nil {
     object["hook_event_name"] = eventName
 }
 
-// Only the variables the eligibility rules actually read. Forwarding the whole
-// environment would put tokens and keys into a socket for no reason.
+// Only the variables the eligibility rules and the jump actually read. Forwarding the
+// whole environment would put tokens and keys into a socket for no reason.
 let wanted = [
     "CLAUDE_CODE_ENTRYPOINT",
     "CLAUDE_AGENT_ID",
@@ -54,6 +54,10 @@ let wanted = [
     "CLAUDE_CODE_SESSION_KIND",
     "CLAUDE_PID",
     "OPENBOARD_ENTRYPOINTS",
+    // The Claude desktop app's own id for the session (`local_…`), which is what its
+    // `claude://code/continue?session=` link takes. Claude Code's `session_id` is a
+    // different id, and the payload carries only that one.
+    "CLAUDE_CODE_HOST_SESSION_ID",
 ]
 let environment = ProcessInfo.processInfo.environment
 object["env"] = wanted.reduce(into: [String: String]()) { result, key in

@@ -19,7 +19,15 @@ import Foundation
 public enum Eligibility {
     /// Surfaces that get a key. Everything else does not, including things that
     /// simply have not been observed yet — new surfaces must be added deliberately.
-    public static let defaultEntrypoints: Set<String> = ["cli", "claude-vscode"]
+    ///
+    /// `claude-desktop` is the Code tab of the Claude desktop app, observed as the
+    /// entrypoint of its sessions in Claude Code 2.1.
+    public static let defaultEntrypoints: Set<String> = ["cli", "claude-vscode", "claude-desktop"]
+
+    /// The default before `claude-desktop` was added. `Preferences` writes the whole
+    /// list into `config.json`, so every existing install has this stored without
+    /// anyone having chosen it — see `Preferences.merging`.
+    public static let previousDefaultEntrypoints: Set<String> = ["cli", "claude-vscode"]
 
     public struct Verdict: Equatable, Sendable {
         public let eligible: Bool

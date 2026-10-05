@@ -576,7 +576,19 @@ extension Preferences {
             }
         }
 
-        if let entrypoints = json["entrypoints"] as? [String] { result.entrypoints = entrypoints }
+        /*
+         The stored list is only a choice if it differs from what the app wrote itself.
+
+         `entrypoints` is persisted in full on every save, and until it was actually
+         passed to `Eligibility.evaluate` it had no effect — so an install carrying
+         exactly the old default never chose it, and keeping it would lock out the
+         surface the new default adds.
+        */
+        if let entrypoints = json["entrypoints"] as? [String] {
+            result.entrypoints = Set(entrypoints) == Eligibility.previousDefaultEntrypoints
+                ? Array(Eligibility.defaultEntrypoints).sorted()
+                : entrypoints
+        }
         if let value = json["scrollLines"] as? Int { result.scrollLines = value }
         if let value = json["staleHours"] as? Int { result.staleHours = value }
         if let value = json["doneDecaySeconds"] as? Int { result.doneDecaySeconds = value }

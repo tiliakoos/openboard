@@ -178,6 +178,10 @@ struct SlotView: Identifiable, Equatable {
     /// in VS Code's integrated terminal; only the first has a panel that can be revealed
     /// by session id, and asking for one that does not exist *creates* it.
     var entrypoint: String?
+    /// The Claude desktop app's id for this session (`local_…`), which its
+    /// `claude://code/continue` link takes. Nil for every other surface, and for a
+    /// desktop session that has not sent a hook since OpenBoard started.
+    var claudeDesktopSession: String?
     /// Whether `title` is the session's own name or a fallback to its folder.
     var isNamed: Bool = false
     /// The real working directory. `project` is only the repo's name, which is not a

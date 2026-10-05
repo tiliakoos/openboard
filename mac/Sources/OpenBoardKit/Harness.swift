@@ -205,6 +205,14 @@ extension Harness {
                 host: .vscode
             ),
             Surface(
+                id: "claude-desktop",
+                name: "Claude desktop app",
+                detection: "Entry point `claude-desktop` — the app's Code tab.",
+                jump: "The app's own `claude://code/continue` link, by its id for the "
+                    + "session: the exact chat. A prompt there is never answered from the "
+                    + "pad — the app cannot say which chat is showing."
+            ),
+            Surface(
                 id: "subagent",
                 name: "Subagents",
                 detection: "`CLAUDE_AGENT_ID`, or an agent type in the payload.",

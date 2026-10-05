@@ -31,10 +31,16 @@ import OpenBoardKit
  unrelated to the session — a confident wrong answer to "jump to that chat", which is
  worse than admitting there is nowhere to go.
 
+ - **Claude desktop app: exact.** No tty and no AppleScript, but the app registers
+   `claude://` and opens one Code session by its own id — see
+   `openClaudeDesktopSession`.
+
  Needs Automation permission for Terminal and, separately, for iTerm2. Granted per
  app, and only after a restart.
  */
 enum Focus {
+    static let claudeDesktopBundleID = "com.anthropic.claudefordesktop"
+
     enum Outcome: Equatable {
         case raised(method: String)
         case noWindow
@@ -54,6 +60,10 @@ enum Focus {
          its fallback did something visible and unrelated rather than reporting that it
          could not get there. It now asks `origin`, which knows who owns the process.
          */
+        if slot.origin == .claudeDesktop {
+            return openClaudeDesktopSession(slot.claudeDesktopSession)
+        }
+
         if slot.origin == .vscode {
             if let session = slot.sessionID, slot.entrypoint == "claude-vscode" {
                 return revealVSCodeSession(session)
@@ -155,6 +165,45 @@ enum Focus {
         case let .failure(message):
             return .failed(message)
         }
+    }
+
+    /**
+     Open one Code session in the Claude desktop app.
+
+     The app registers `claude://`, and `code/continue?session=` routes to the session
+     whose id matches — the link its own Dock menu and Spotlight entries are built from.
+     The id is the *app's* (`local_…`, from `CLAUDE_CODE_HOST_SESSION_ID`), not Claude
+     Code's `session_id`; the hook helper forwards it for exactly this.
+
+     The app drops any id that does not match `^local_[A-Za-z0-9-]{1,64}$`, silently. The
+     same rule is applied here so that a link it would ignore is never sent, and the
+     press raises the app instead of appearing to do nothing.
+
+     Undocumented, like the VS Code handoff: a failed link falls back to bringing the
+     app forward rather than leaving the press with nothing to show for it.
+     */
+    private static func openClaudeDesktopSession(_ hostSessionID: String?) -> Outcome {
+        if let id = hostSessionID,
+           id.range(of: #"^local_[A-Za-z0-9-]{1,64}$"#, options: .regularExpression) != nil {
+            var components = URLComponents()
+            components.scheme = "claude"
+            components.host = "code"
+            components.path = "/continue"
+            components.queryItems = [URLQueryItem(name: "session", value: id)]
+            if let url = components.url, NSWorkspace.shared.open(url) {
+                return .raised(method: "claude-desktop-session")
+            }
+        }
+        return activateClaudeDesktop()
+    }
+
+    /// Bring the Claude desktop app forward, without opening anything. Only if it is
+    /// running: a session from it cannot outlive it, so launching it would find nothing.
+    private static func activateClaudeDesktop() -> Outcome {
+        guard let claude = NSRunningApplication
+            .runningApplications(withBundleIdentifier: claudeDesktopBundleID).first
+        else { return .notFound }
+        return claude.activate() ? .raised(method: "claude-desktop-app") : .failed("Claude did not activate")
     }
 
     /// Select the Terminal tab whose tty matches, and bring it forward.

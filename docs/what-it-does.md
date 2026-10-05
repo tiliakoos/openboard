@@ -91,14 +91,17 @@ its current state. Anything blocked is called out at the top.
 Press an Agent key and OpenBoard brings that chat to the front. In Terminal and iTerm2 it
 finds the exact tab; in cmux it selects the exact surface, switching workspace if the
 session is in another one; in Warp it opens the exact tab through Warp's own focus URL;
-in VS Code it reveals the panel already holding that conversation.
+in VS Code it reveals the panel already holding that conversation; in the Claude desktop
+app it selects that session through the app's own `claude://code/continue` link.
 
 Nothing is ever *opened* by a jump. The extension reveals a panel it already has, and the
 integrated-terminal case raises the app rather than opening a folder — an approximate jump
 beats an unrequested one that rearranges your editor.
 
 Where OpenBoard cannot confirm which chat is in front of you, it **refuses to answer a
-prompt** rather than sending ⏎ at whatever happens to be there.
+prompt** rather than sending ⏎ at whatever happens to be there. The Claude desktop app
+never can — it has no way to say which chat it is showing — so a prompt there is always
+answered by you.
 
 ## Which sessions get a key
 
@@ -112,11 +115,12 @@ execute and only a local process can reach the hardware.
 | Warp | yes — any tab or split, in any window |
 | VS Code, integrated terminal | yes |
 | VS Code, extension-hosted | yes |
+| Claude desktop app, Code tab | yes |
 | Subagents | no — six keys is a scarce budget |
-| claude.ai/code, cloud, SSH | unreachable |
+| claude.ai/code in a browser, cloud, SSH | unreachable |
 
-Any of those four apps can be switched off on its own in **Settings → Agents → Where it
-works**, and a surface you switch off gives up the keys it is holding straight away. An
+Terminal, iTerm2, cmux and VS Code can each be switched off on its own in **Settings →
+Agents → Where it works**, and a surface you switch off gives up the keys it is holding straight away. An
 unrecognised surface gets no key rather than quietly taking one.
 
 ---

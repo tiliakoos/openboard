@@ -56,6 +56,7 @@ runCmuxDiscoveryTests()
 runCmuxNewTabTests()
 runWarpTests()
 runBackTests()
+runClaudeDesktopTests()
 runSurfaceListeningTests()
 
 // Configuration and where it lives.

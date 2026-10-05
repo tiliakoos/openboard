@@ -53,6 +53,10 @@ final class BoardController: ObservableObject {
     /// board asks of cmux — what a session's surface is, and what that surface is
     /// called — so they cannot disagree with each other.
     private var cmuxSurfaces: [Int: Cmux.Surface] = [:]
+    /// The Claude desktop app's id for each of its sessions, by Claude Code session id.
+    /// The two are different ids, and only the app's opens a chat there. Kept here
+    /// rather than in the registry, like `cmuxSurfaces`: every hook re-reports it.
+    private var claudeDesktopSessions: [String: String] = [:]
     /// How to show the settings window. Injected by the delegate that owns it.
     var openSettings: (() -> Void)?
     /// Press versus press-and-hold on the dial.
@@ -1394,9 +1398,13 @@ final class BoardController: ObservableObject {
 
         // Fail-closed: an unrecognised surface gets no key. Applied here rather than
         // in the helper so the rules live in one place and can be reasoned about.
+        //
+        // The configured list is passed through: without it `entrypoints` in config.json
+        // was read, saved and shown, and changed nothing.
         let verdict = Eligibility.evaluate(
             env: event.environment,
             payload: event.eligibilityPayload,
+            configured: model.preferences.entrypoints,
             harness: event.harness
         )
         guard verdict.eligible, let hookSessionID = event.sessionID else {
@@ -1454,6 +1462,13 @@ final class BoardController: ObservableObject {
 
         if event.name == "SessionStart", continuations[hookSessionID] != nil { return }
 
+        // Every event carries it, so a session first seen before OpenBoard restarted is
+        // jumpable again from its next hook.
+        if event.entrypoint == "claude-desktop",
+           let hostID = event.environment["CLAUDE_CODE_HOST_SESSION_ID"], !hostID.isEmpty {
+            claudeDesktopSessions[sessionID] = hostID
+        }
+
         // Dictation ends when what it was dictating is sent.
         if event.name == "UserPromptSubmit", voiceIsActive {
             setVoice(false, why: "prompt submitted")
@@ -1468,6 +1483,7 @@ final class BoardController: ObservableObject {
             mutedSessions.remove(sessionID)
             if let entry = registry.entry(forSession: sessionID) {
                 SessionTitle.forget(transcriptPath: entry.transcriptPath)
+                claudeDesktopSessions[sessionID] = nil
                 registry.release(sessionID: sessionID)
                 Log.write("hook \(event.name): released slot \(entry.slot) (\(sessionID.prefix(8)))")
                 publish()
@@ -1493,8 +1509,9 @@ final class BoardController: ObservableObject {
          quietly working through tool calls, which is most of them, was never adopted
          and the board reported zero sessions while hooks arrived normally.
 
-         Safe here because eligibility has already run: only `cli` and `claude-vscode`
-         reach this point, never a subagent or an embedded SDK client.
+         Safe here because eligibility has already run: only allowed entrypoints
+         (`cli`, `claude-vscode`, `claude-desktop` by default) reach this point, never a
+         subagent or an embedded SDK client.
          */
         // A discovered host holding a placeholder hands its slot over here, rather
         // than the session taking a second key and the board showing it twice.
@@ -2231,6 +2248,7 @@ final class BoardController: ObservableObject {
 
     func forgetAllSessions() {
         registry.reset()
+        claudeDesktopSessions = [:]
         publish()
         Task { await paint() }
     }
@@ -2267,6 +2285,7 @@ final class BoardController: ObservableObject {
                 pid: entry.pid,
                 cmuxSurface: entry.pid.flatMap { cmuxSurfaces[$0] },
                 entrypoint: entry.entrypoint,
+                claudeDesktopSession: claudeDesktopSessions[entry.sessionID],
                 isNamed: name != nil,
                 cwd: entry.cwd,
                 // The same resolution the pad gets, from the same configured colors, so

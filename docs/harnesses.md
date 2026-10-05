@@ -18,6 +18,7 @@ Fully wired, and the only one tested at length. Every surface:
 | **Warp** | every state, and a key opens the exact tab or split through the focus URL Warp gives every shell, in whichever window. Needs no Automation grant |
 | **VS Code, extension-hosted** | every state, and a key reveals the panel already holding that conversation |
 | **VS Code, integrated terminal** | every state; a key raises VS Code but cannot select a specific terminal — no API exposes that from outside |
+| **Claude desktop app** | every state, and a key opens the exact session through the app's own `claude://code/continue` link. A prompt there is never answered from the pad |
 
 Each of those five apps has a switch in **Settings → Agents → Where it works**. Turning
 one off means sessions there get no key — and any key one of them is already holding is

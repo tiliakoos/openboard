@@ -265,6 +265,9 @@ public enum SessionOrigin: String, Sendable, Equatable {
     case warp = "Warp"
     /// A T3 Code thread. Not a process at all, so no host or tty can say so.
     case t3code = "T3 Code"
+    /// The Code tab of the Claude desktop app. Reached by its own `claude://` link,
+    /// by the app's id for the session — see `Focus.openClaudeDesktopSession`.
+    case claudeDesktop = "Claude"
     case cli = "CLI"
 
     /// Decided from the entrypoint, then from which application actually owns the
@@ -277,6 +280,7 @@ public enum SessionOrigin: String, Sendable, Equatable {
     ) -> SessionOrigin {
         if entrypoint == "claude-vscode" { return .vscode }
         if entrypoint == T3Code.entrypoint { return .t3code }
+        if entrypoint == "claude-desktop" { return .claudeDesktop }
         // A tty is not enough. VS Code's integrated terminal allocates a real pty, so
         // a session there is indistinguishable from a Terminal tab by entrypoint and
         // tty alone — which is why this used to label it "Terminal" and then fail to

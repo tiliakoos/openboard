@@ -84,7 +84,9 @@ test("the allowlist is fail-closed") {
         expect(!verdict.eligible, "\(entrypoint) must not get a key by default")
     }
     expect(Eligibility.evaluate(env: [:], payload: payload).reason == .unknownEntrypoint)
-    expect(Eligibility.defaultEntrypoints == ["cli", "claude-vscode"])
+    // One addition to the Node version's list: the Claude desktop app, observed as
+    // `claude-desktop`. See `runClaudeDesktopTests`.
+    expect(Eligibility.defaultEntrypoints == ["cli", "claude-vscode", "claude-desktop"])
 }
 
 test("subagents never take a key") {

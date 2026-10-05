@@ -98,7 +98,8 @@ rank in a live recency sort — so typing in one chat can repaint four other key
 you cannot trust is worse than no status.
 
 Only sessions running **on this Mac** get a key, because that is where the hooks execute.
-Terminal, iTerm2, cmux, Warp and VS Code all work. Subagents deliberately do not — six keys is
+Terminal, iTerm2, cmux, Warp, VS Code and the Claude desktop app's Code tab all work.
+Subagents deliberately do not — six keys is
 a scarce budget — and anything remote is unreachable.
 
 ## Other agents
@@ -180,7 +181,8 @@ restart.
 **Press an Agent key** to jump to that chat. In Terminal and iTerm2 it finds the exact
 tab; in cmux it selects the exact surface, in whichever workspace it lives; in Warp it
 opens the exact tab through Warp's own focus URL; in VS Code it reveals the panel already
-holding that conversation. Nothing is ever *opened* by a jump — an approximate jump beats
+holding that conversation; in the Claude desktop app it opens that session through the
+app's own `claude://` link. Nothing is ever *opened* by a jump — an approximate jump beats
 an unrequested one that rearranges your editor.
 
 Where OpenBoard cannot confirm which chat is in front of you, it **refuses to answer a

@@ -347,6 +347,14 @@ enum Actions {
             return .focusFailed(slot: target.slot, reason: "\(raised)")
         }
 
+        // Raised, so the prompt is in front of you — but never answered from here. The
+        // Claude desktop app has no way to say which chat it is showing, so there is
+        // nothing to confirm against; `hasLanded` refuses it too, this only skips the
+        // 1.5s of polling that cannot succeed.
+        if target.origin == .claudeDesktop {
+            return .focusFailed(slot: target.slot, reason: "the Claude app cannot confirm which chat is open")
+        }
+
         guard confirmFrontmost(target) else {
             return .focusFailed(slot: target.slot, reason: "never became frontmost")
         }
@@ -409,8 +417,12 @@ enum Actions {
        is not Terminal's, and no window title names it. Rather than assume the raise
        landed and fire ⏎ into whatever is in front, this reports a failure — the whole
        reason the check exists.
+     - **The Claude desktop app** cannot be confirmed either, for the same reason: it
+       exposes no way to ask which chat it is showing.
      */
     private static func hasLanded(_ target: SlotView) -> Bool {
+        if target.origin == .claudeDesktop { return false }
+
         if target.origin == .cmux {
             /*
              Two conditions, and the first one is the one that matters.
