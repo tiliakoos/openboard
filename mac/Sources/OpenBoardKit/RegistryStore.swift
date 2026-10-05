@@ -52,6 +52,8 @@ public struct RegistryStore: Sendable {
         var transcriptPath: String?
         var entrypoint: String?
         var host: String?
+        /// Optional, so a registry written before it existed still decodes.
+        var claudeDesktopSession: String?
         var state: String
         var claimSeq: Int
         var claimedAt: Date
@@ -101,6 +103,7 @@ public struct RegistryStore: Sendable {
                 transcriptPath: stored.transcriptPath,
                 entrypoint: stored.entrypoint,
                 host: stored.host.flatMap(ProcessAncestry.Host.init(rawValue:)) ?? .unknown,
+                claudeDesktopSession: stored.claudeDesktopSession,
                 state: settled(state, transcriptPath: stored.transcriptPath),
                 pendingTool: nil,
                 claimSeq: stored.claimSeq,
@@ -165,6 +168,7 @@ public struct RegistryStore: Sendable {
                     transcriptPath: entry.transcriptPath,
                     entrypoint: entry.entrypoint,
                     host: entry.host == .unknown ? nil : entry.host.rawValue,
+                    claudeDesktopSession: entry.claudeDesktopSession,
                     state: entry.state.rawValue,
                     claimSeq: entry.claimSeq,
                     claimedAt: entry.claimedAt,

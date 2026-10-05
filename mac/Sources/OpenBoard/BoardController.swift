@@ -53,10 +53,6 @@ final class BoardController: ObservableObject {
     /// board asks of cmux — what a session's surface is, and what that surface is
     /// called — so they cannot disagree with each other.
     private var cmuxSurfaces: [Int: Cmux.Surface] = [:]
-    /// The Claude desktop app's id for each of its sessions, by Claude Code session id.
-    /// The two are different ids, and only the app's opens a chat there. Kept here
-    /// rather than in the registry, like `cmuxSurfaces`: every hook re-reports it.
-    private var claudeDesktopSessions: [String: String] = [:]
     /// How to show the settings window. Injected by the delegate that owns it.
     var openSettings: (() -> Void)?
     /// Press versus press-and-hold on the dial.
@@ -1412,6 +1408,13 @@ final class BoardController: ObservableObject {
             return
         }
 
+        // The Claude desktop app's own id for this session — a different id from
+        // `sessionID`, and the only one its link opens a chat by. Recorded on the entry
+        // below, with everything else an event can teach it.
+        let desktopSession = event.entrypoint == "claude-desktop"
+            ? event.environment["CLAUDE_CODE_HOST_SESSION_ID"].flatMap { $0.isEmpty ? nil : $0 }
+            : nil
+
         guard let state = EventMapper.state(
             for: event.name,
             matcher: event.matcher,
@@ -1462,13 +1465,6 @@ final class BoardController: ObservableObject {
 
         if event.name == "SessionStart", continuations[hookSessionID] != nil { return }
 
-        // Every event carries it, so a session first seen before OpenBoard restarted is
-        // jumpable again from its next hook.
-        if event.entrypoint == "claude-desktop",
-           let hostID = event.environment["CLAUDE_CODE_HOST_SESSION_ID"], !hostID.isEmpty {
-            claudeDesktopSessions[sessionID] = hostID
-        }
-
         // Dictation ends when what it was dictating is sent.
         if event.name == "UserPromptSubmit", voiceIsActive {
             setVoice(false, why: "prompt submitted")
@@ -1483,7 +1479,6 @@ final class BoardController: ObservableObject {
             mutedSessions.remove(sessionID)
             if let entry = registry.entry(forSession: sessionID) {
                 SessionTitle.forget(transcriptPath: entry.transcriptPath)
-                claudeDesktopSessions[sessionID] = nil
                 registry.release(sessionID: sessionID)
                 Log.write("hook \(event.name): released slot \(entry.slot) (\(sessionID.prefix(8)))")
                 publish()
@@ -1617,7 +1612,8 @@ final class BoardController: ObservableObject {
             transcriptPath: transcript,
             entrypoint: event.entrypoint,
             tty: hookPID.flatMap(Self.tty(forPID:)),
-            pid: hookPID
+            pid: hookPID,
+            claudeDesktopSession: desktopSession
         ) {
             // Logged once per session, when it happens: an unnamed row is otherwise
             // indistinguishable from a session that genuinely has no transcript.
@@ -1639,6 +1635,9 @@ final class BoardController: ObservableObject {
                 entrypoint: event.entrypoint,
                 state: state
             )
+            // The enrich above ran before this claim, so a new desktop session would
+            // otherwise not be jumpable until its first prompt.
+            registry.enrich(sessionID: sessionID, claudeDesktopSession: desktopSession)
         } else if EventMapper.clearsAttention.contains(event.name) {
             /*
              A tool just ran, so this session is working — whatever it was showing.
@@ -2248,7 +2247,6 @@ final class BoardController: ObservableObject {
 
     func forgetAllSessions() {
         registry.reset()
-        claudeDesktopSessions = [:]
         publish()
         Task { await paint() }
     }
@@ -2285,7 +2283,7 @@ final class BoardController: ObservableObject {
                 pid: entry.pid,
                 cmuxSurface: entry.pid.flatMap { cmuxSurfaces[$0] },
                 entrypoint: entry.entrypoint,
-                claudeDesktopSession: claudeDesktopSessions[entry.sessionID],
+                claudeDesktopSession: entry.claudeDesktopSession,
                 isNamed: name != nil,
                 cwd: entry.cwd,
                 // The same resolution the pad gets, from the same configured colors, so

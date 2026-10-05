@@ -26,6 +26,10 @@ public struct SessionRegistry: Sendable, Equatable {
         /// Which app owns the terminal this runs in. Captured once, because `ps` is not
         /// free and the answer cannot change for a live process.
         public var host: ProcessAncestry.Host = .unknown
+        /// The Claude desktop app's own id for this session (`local_…`), which its
+        /// `claude://code/continue` link takes. Persisted: a session restored after a
+        /// relaunch could otherwise only raise the app until it next sent a hook.
+        public var claudeDesktopSession: String? = nil
         public var state: SessionState
         /// Which tool is asking. The dialogs differ — an AskUserQuestion accepts
         /// Enter but ignores Escape — so "reject" is not universally possible and
@@ -404,12 +408,19 @@ public struct SessionRegistry: Sendable, Equatable {
         transcriptPath: String? = nil,
         entrypoint: String? = nil,
         tty: String? = nil,
-        pid: Int? = nil
+        pid: Int? = nil,
+        claudeDesktopSession: String? = nil
     ) -> Bool {
         guard let index = entries.firstIndex(where: { $0.sessionID == sessionID }) else {
             return false
         }
         var changed = false
+        // Replaced rather than only filled: it is the app's to assign, and the newest
+        // report is the one its link will accept.
+        if let claudeDesktopSession, entries[index].claudeDesktopSession != claudeDesktopSession {
+            entries[index].claudeDesktopSession = claudeDesktopSession
+            changed = true
+        }
         if entries[index].cwd == nil, let cwd { entries[index].cwd = cwd; changed = true }
         if entries[index].transcriptPath == nil, let transcriptPath {
             entries[index].transcriptPath = transcriptPath

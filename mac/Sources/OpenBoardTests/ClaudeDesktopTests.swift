@@ -49,6 +49,48 @@ func runClaudeDesktopTests() {
         expectEqual(merged.entrypoints, ["cli"])
     }
 
+    // MARK: - the app's id for the session
+
+    test("an event teaches the entry the app's id, and a newer one replaces it") {
+        var registry = SessionRegistry()
+        _ = registry.claim(sessionID: "s1", pid: 4242, entrypoint: "claude-desktop", isAlive: { _ in true })
+        expect(registry.enrich(sessionID: "s1", claudeDesktopSession: "local_a"))
+        expectEqual(registry.entry(forSession: "s1")?.claudeDesktopSession, "local_a")
+        expect(!registry.enrich(sessionID: "s1", claudeDesktopSession: "local_a"), "unchanged is not a change")
+        expect(registry.enrich(sessionID: "s1", claudeDesktopSession: "local_b"))
+        expectEqual(registry.entry(forSession: "s1")?.claudeDesktopSession, "local_b")
+    }
+
+    test("the app's id survives a relaunch") {
+        // Kept in memory only, a session restored from disk could raise the app but
+        // not open its chat until it next sent a hook — which a finished one never does.
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openboard-desktop-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var registry = SessionRegistry()
+        _ = registry.claim(sessionID: "s1", pid: 4242, entrypoint: "claude-desktop", isAlive: { _ in true })
+        registry.enrich(sessionID: "s1", claudeDesktopSession: "local_86b88d36-b11c")
+        RegistryStore.save(registry, url: url)
+
+        let loaded = RegistryStore.load(url: url, isAlive: { _ in true })
+        expectEqual(loaded.entry(forSession: "s1")?.claudeDesktopSession, "local_86b88d36-b11c")
+    }
+
+    test("a registry written before the field existed still loads") {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openboard-desktop-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var registry = SessionRegistry()
+        _ = registry.claim(sessionID: "s1", pid: 4242, entrypoint: "cli", isAlive: { _ in true })
+        RegistryStore.save(registry, url: url)
+        let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        expect(!text.contains("claudeDesktopSession"), "an absent id is not written")
+
+        let loaded = RegistryStore.load(url: url, isAlive: { _ in true })
+        expect(loaded.entry(forSession: "s1") != nil)
+        expect(loaded.entry(forSession: "s1")?.claudeDesktopSession == nil)
+    }
+
     // MARK: - origin
 
     test("the desktop app is its own origin, not a CLI") {

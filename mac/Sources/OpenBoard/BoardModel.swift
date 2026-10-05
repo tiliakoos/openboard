@@ -180,7 +180,7 @@ struct SlotView: Identifiable, Equatable {
     var entrypoint: String?
     /// The Claude desktop app's id for this session (`local_…`), which its
     /// `claude://code/continue` link takes. Nil for every other surface, and for a
-    /// desktop session that has not sent a hook since OpenBoard started.
+    /// desktop session whose hooks predate the helper forwarding it.
     var claudeDesktopSession: String?
     /// Whether `title` is the session's own name or a fallback to its folder.
     var isNamed: Bool = false
