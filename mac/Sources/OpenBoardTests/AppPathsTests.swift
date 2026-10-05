@@ -579,7 +579,7 @@ func runHarnessTests() {
         )
         expectEqual(
             Set(OpenBoardKit.Harness.all.map(\.id)),
-            ["claude-code", "hermes", "pi"]
+            ["claude-code", "t3code", "hermes", "pi"]
         )
     }
 
@@ -605,6 +605,12 @@ func runHarnessTests() {
                     "\(harness.name)'s snippet does not identify itself, so eligibility "
                         + "would refuse every event it sends"
                 )
+            case let .token(mintCommand):
+                // Nothing to paste into its config: the board reads T3's server, and
+                // the one thing it needs is a token minted by T3's own CLI.
+                expectEqual(harness.id, "t3code")
+                expect(mintCommand.contains("auth session issue"), "the mint command mints nothing")
+                expect(mintCommand.contains("TOKEN_FILE"), "the mint command does not say where it writes")
             }
         }
     }

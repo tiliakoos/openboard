@@ -39,6 +39,7 @@ struct HarnessPane: View {
     @State private var hooks = HookInstall.Audit(statuses: [:], settingsExists: false)
     @State private var hookNote: String?
     @State private var agents: [(agent: HarnessDetector.Agent, installed: Bool)] = []
+    @State private var tokenDraft = ""
 
     private var installedIDs: Set<String> {
         Set(agents.filter(\.installed).compactMap { $0.agent.harnessID })
@@ -47,7 +48,12 @@ struct HarnessPane: View {
     /// Installed *and* reporting. Either alone is not a connection: an agent that is
     /// not here cannot send anything, and one whose hooks are unwired never will.
     private var isConnected: Bool {
-        installedIDs.contains(harness.id) && (harness.setup == .automatic ? hooks.isHealthy : true)
+        switch harness.setup {
+        case .automatic: installedIDs.contains(harness.id) && hooks.isHealthy
+        case .manual: installedIDs.contains(harness.id)
+        // Installed proves nothing here: without a token its server answers no one.
+        case .token: board.t3Status.isConnected
+        }
     }
 
     private var harness: Harness {
@@ -145,9 +151,11 @@ struct HarnessPane: View {
                     .frame(width: 9, height: 9)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(harness.name).font(.system(size: 13, weight: .semibold))
-                    Text(installedIDs.contains(harness.id)
-                        ? "Found on this Mac, and it has never reported to the board."
-                        : "Not found on this Mac.")
+                    Text(harness.id == T3Code.harnessID
+                        ? tokenStatus
+                        : installedIDs.contains(harness.id)
+                            ? "Found on this Mac, and it has never reported to the board."
+                            : "Not found on this Mac.")
                         .font(.system(size: 11.5))
                         .foregroundStyle(.secondary)
                 }
@@ -179,6 +187,11 @@ struct HarnessPane: View {
                 }
             case let .manual(path, snippet):
                 manualSetup(path: path, snippet: snippet)
+            case let .token(mintCommand):
+                tokenSetup(mintCommand: mintCommand)
+                if let hookNote {
+                    Text(hookNote).font(.system(size: 11)).foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -196,7 +209,7 @@ struct HarnessPane: View {
                 .frame(width: 9, height: 9)
             VStack(alignment: .leading, spacing: 2) {
                 Text(harness.name).font(.system(size: 13, weight: .semibold))
-                Text(isConnected ? "Connected" : "Not connected")
+                Text(harness.id == T3Code.harnessID ? tokenStatus : isConnected ? "Connected" : "Not connected")
                     .font(.system(size: 11.5))
                     .foregroundStyle(.secondary)
             }
@@ -259,6 +272,79 @@ struct HarnessPane: View {
         snippet.replacingOccurrences(of: "OPENBOARD", with: HookInstall.hookCommandPath())
     }
 
+    /// The connection, in words. Shown in both the empty state and the connected card:
+    /// a token pasted before any thread has run must still visibly do something.
+    private var tokenStatus: String {
+        let summary = board.t3Status.summary
+        return summary.prefix(1).uppercased() + summary.dropFirst() + "."
+    }
+
+    /**
+     For a harness OpenBoard reads rather than wires: a token, and how to get one.
+
+     The mint command writes straight into the token file, so the token never passes
+     through a clipboard or a terminal's scrollback. The field is for a token minted
+     some other way.
+     */
+    private func tokenSetup(mintCommand: String) -> some View {
+        let command = mintCommand.replacingOccurrences(of: "TOKEN_FILE", with: AppPaths.t3Token().path)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(board.t3Status.isConnected ? Color(RGB(0x09B821))
+                        : board.t3Status == .noToken ? Color.secondary.opacity(0.45)
+                        : Color(RGB(0xFF6A00)))
+                    .frame(width: 8, height: 8)
+                Text(tokenStatus).font(.system(size: 12))
+                Spacer(minLength: 0)
+            }
+            Text("Mint a token with T3's own command line, in any terminal:")
+                .font(.system(size: 11.5))
+                .foregroundStyle(.secondary)
+            HStack(alignment: .top, spacing: 8) {
+                ScrollView(.horizontal) {
+                    Text(command)
+                        .font(.system(size: 11).monospaced())
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Button("Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(command, forType: .string)
+                    hookNote = "Copied."
+                }
+                .controlSize(.small)
+            }
+            HStack(spacing: 8) {
+                SecureField("Or paste a token", text: $tokenDraft)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11.5))
+                Button("Save") {
+                    do {
+                        try T3Code.saveToken(tokenDraft)
+                        tokenDraft = ""
+                        hookNote = "Saved."
+                    } catch {
+                        hookNote = error.localizedDescription
+                    }
+                    commands.t3TokenChanged()
+                }
+                .controlSize(.small)
+                .disabled(tokenDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Remove") {
+                    T3Code.removeToken()
+                    hookNote = "Removed. Revoke it in T3 with `auth session revoke`."
+                    commands.t3TokenChanged()
+                }
+                .controlSize(.small)
+                .disabled(board.t3Status == .noToken)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.35), in: .rect(cornerRadius: 10))
+    }
+
     // MARK: - events
 
     /// The wiring and the meaning, in one card: whether the events arrive, then what
@@ -279,6 +365,10 @@ struct HarnessPane: View {
             // No audit for these: their configuration is not ours to read, so the only
             // honest thing to show is what it should contain.
             manualSetup(path: path, snippet: snippet)
+        }
+
+        if case let .token(mintCommand) = harness.setup {
+            tokenSetup(mintCommand: mintCommand)
         }
 
         if let hookNote {
@@ -492,7 +582,9 @@ struct HarnessPane: View {
         VStack(spacing: 0) {
             ForEach(Array(harness.surfaces.enumerated()), id: \.element.id) { index, surface in
                 if index > 0 { Divider().opacity(0.3) }
-                let isListening = surface.host.map { board.surfaces[$0.rawValue] ?? true } ?? false
+                // A supported row with no app to switch off is always listened to.
+                let isListening = surface.host.map { board.surfaces[$0.rawValue] ?? true }
+                    ?? (surface.unsupported == nil)
                 HStack(alignment: .top, spacing: 10) {
                     Circle()
                         .fill(surface.unsupported == nil && isListening

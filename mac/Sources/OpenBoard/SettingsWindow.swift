@@ -71,9 +71,9 @@ struct SettingsWindow: View {
                     }
 
                     /*
-                     The three harnesses, where CodexBar puts its providers.
+                     The four harnesses, where CodexBar puts its providers.
 
-                     Only the three OpenBoard can actually drive. The harness pane knows
+                     Only the four OpenBoard can actually drive. The harness pane knows
                      about thirteen and can say which are on the machine, but a sidebar
                      is navigation: every row here has to go somewhere, and ten rows
                      that only report a fact would be a list you cannot click.
@@ -86,7 +86,11 @@ struct SettingsWindow: View {
                         ForEach(Harness.all) { item in
                             HarnessRow(
                                 harness: item,
-                                connected: installed.contains(item.id),
+                                // T3 has no hooks to audit: connected is its server
+                                // answering with the token, and nothing less.
+                                connected: item.id == T3Code.harnessID
+                                    ? board.t3Status.isConnected
+                                    : installed.contains(item.id),
                                 everSeen: board.preferences.harnessesSeen.contains(item.id)
                             )
                             .tag(Selection.harness(item.id))

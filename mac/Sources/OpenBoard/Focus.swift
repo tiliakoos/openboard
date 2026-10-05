@@ -71,6 +71,9 @@ enum Focus {
         if slot.origin == .warp {
             return focusWarp(slot)
         }
+        if slot.origin == .t3code {
+            return focusT3(slot)
+        }
 
         if let tty = slot.surface, tty.hasPrefix("ttys") || tty.hasPrefix("/dev/") {
             let path = tty.hasPrefix("/dev/") ? tty : "/dev/\(tty)"
@@ -261,6 +264,40 @@ enum Focus {
         // surface rather than switching workspaces in front of you.
         app.activate()
         return .raised(method: "cmux-surface")
+    }
+
+    /**
+     Open the thread in T3 Code, and bring T3 forward.
+
+     By its sidebar row, through T3's accessibility tree — see `T3Window`. The thread is
+     opened before T3 is raised, so the window that comes forward is already showing it.
+     A row that cannot be found or pressed still brings T3 forward, and says so in the
+     method: the app is the next best place, and the log can tell the two apart.
+
+     Never launches T3. A key cannot hold a thread from a server that is not running.
+     */
+    private static func focusT3(_ slot: SlotView) -> Outcome {
+        guard let app = NSRunningApplication
+            .runningApplications(withBundleIdentifier: T3Code.bundleID).first
+        else { return .notFound }
+        let threadID = slot.sessionID.flatMap(T3Code.threadID(fromSession:))
+        let opened = slot.isNamed && T3Window.open(title: slot.title ?? "", threadID: threadID ?? "")
+        /*
+         Through LaunchServices, as `open -a` does, rather than `activate()`.
+
+         Since macOS 14 activation is cooperative: a request from an app that is not in
+         front — which OpenBoard never is — may simply be ignored, and was, from an action
+         key on the pad. Opening the app is a request the system honours, the same way the
+         Warp jump's URL is.
+        */
+        if let bundle = app.bundleURL {
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = true
+            NSWorkspace.shared.openApplication(at: bundle, configuration: configuration)
+        } else {
+            app.activate()
+        }
+        return .raised(method: opened ? "t3 thread" : "t3 app")
     }
 
     /**

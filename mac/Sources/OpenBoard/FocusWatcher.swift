@@ -21,6 +21,8 @@ enum FocusedSurface: Equatable {
     /// and the Claude Code extension names its tabs after the session. See
     /// `VSCodeWindows`.
     case vscode(windowTitle: String)
+    /// The thread T3 Code is showing, from its window's route. See `T3Window`.
+    case t3code(threadID: String)
     case elsewhere
 }
 
@@ -90,7 +92,7 @@ final class FocusWatcher {
     private static var readableFrontmost: String? {
         guard let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         else { return nil }
-        let readable = [terminalBundleID, Cmux.bundleID, VSCodeWindows.bundleID]
+        let readable = [terminalBundleID, Cmux.bundleID, VSCodeWindows.bundleID, T3Code.bundleID]
         return readable.contains(frontmost) ? frontmost : nil
     }
 
@@ -129,6 +131,9 @@ final class FocusWatcher {
         case VSCodeWindows.bundleID:
             guard let title = await VSCodeWindows.focusedTitle() else { return .elsewhere }
             return .vscode(windowTitle: title)
+        case T3Code.bundleID:
+            guard let thread = await T3Window.focusedThreadID() else { return .elsewhere }
+            return .t3code(threadID: thread)
         default:
             return .elsewhere
         }

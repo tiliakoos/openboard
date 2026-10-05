@@ -70,6 +70,14 @@ final class BoardController: ObservableObject {
     private var lastOpenLog: String?
     private var lastPresenceLog: String?
     private var lastCmuxLog: String?
+    /// T3 Code, read from its server — see `T3Code`. The state is the diff's baseline;
+    /// the titles name its rows, since a thread has no transcript here.
+    private let t3Client = T3Client()
+    private var t3 = T3Code.State()
+    private var t3Titles: [String: String] = [:]
+    private var t3Task: Task<Void, Never>?
+    private var lastT3Log: String?
+    private var t3UnknownStatuses: Set<String> = []
     /// Sessions already found to belong to a muted surface, so the walk up the process
     /// tree is paid once per session rather than once per hook. Keyed by session id,
     /// not pid, because the OS reuses pids. Cleared whenever the setting changes,
@@ -456,6 +464,7 @@ final class BoardController: ObservableObject {
         startMicWatcher()
         startHookServer()
         startResident()
+        startT3()
         reconnect()
     }
 
@@ -630,6 +639,8 @@ final class BoardController: ObservableObject {
                 Log.write("key \(key): slot \(slot) never came forward (\(reason)) — not sent")
             case let .failed(detail):
                 Log.write("key \(key): \(detail)")
+            case let .handOff(target):
+                respondInT3(decision, target: target, key: key)
             }
 
         case .snippet:
@@ -915,6 +926,8 @@ final class BoardController: ObservableObject {
         case let .vscode(windowTitle):
             guard entry.entrypoint == "claude-vscode", let name else { return false }
             return WindowTitle.names(name, in: windowTitle)
+        case let .t3code(threadID):
+            return entry.sessionID == T3Code.sessionPrefix + threadID
         case .elsewhere:
             return false
         }
@@ -928,7 +941,8 @@ final class BoardController: ObservableObject {
     /// them; they arrive with the same spinner glyph in front and go through the same
     /// `TerminalTitle.clean`.
     private func name(of entry: SessionRegistry.Entry) -> String? {
-        entry.tty.flatMap { terminalTitles[$0] }
+        t3Titles[entry.sessionID]
+            ?? entry.tty.flatMap { terminalTitles[$0] }
             ?? entry.pid.flatMap { cmuxSurfaces[$0]?.title }.flatMap(TerminalTitle.clean)
             ?? SessionTitle.forSession(transcriptPath: entry.transcriptPath)
     }
@@ -940,6 +954,7 @@ final class BoardController: ObservableObject {
         case let .terminal(tty): return tty
         case let .cmux(surface): return "cmux \(surface)"
         case let .vscode(windowTitle): return "vscode “\(windowTitle.prefix(60))”"
+        case let .t3code(threadID): return "t3 \(threadID.prefix(8))"
         case .elsewhere: return "elsewhere"
         }
     }
@@ -1194,6 +1209,135 @@ final class BoardController: ObservableObject {
                 await MainActor.run {
                     self.model.apply(device: .permissionDenied(missing: ["a usable hook socket"]))
                 }
+            }
+        }
+    }
+
+    /**
+     Read T3 Code's threads for as long as the app runs.
+
+     Independent of the pad, like the hook socket: a thread that changes while the pad is
+     asleep or away must already be on the board when it comes back.
+     */
+    private func startT3() {
+        t3Task?.cancel()
+        t3Task = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let delay = await self?.pollT3() else { return }
+                try? await Task.sleep(for: delay)
+            }
+        }
+    }
+
+    /// A token was saved or removed. Asks now, rather than after a 30s wait that a
+    /// rejected token would otherwise be sitting in.
+    func t3TokenChanged() { startT3() }
+
+    /**
+     One read of T3's server, fed through `handle` as if each change were a hook.
+
+     The events go through the same path as every hook, so claiming, the "never steal an
+     orange key" rule, laps and the log are the board's own rather than a second copy.
+     */
+    private func pollT3() async -> Duration {
+        let result = await t3Client.poll()
+        // A token change restarted the loop while this was in flight; the new loop asks
+        // again, and two loops applying snapshots would emit everything twice.
+        guard !Task.isCancelled else { return .zero }
+
+        let status: T3Code.Status
+        let emissions: [T3Code.Emission]
+        var reason: String?
+        var titlesChanged = false
+        var promptSubmitted = false
+        switch result {
+        case let .snapshot(snapshot):
+            let update = t3.apply(snapshot, now: Date())
+            emissions = update.emissions
+            status = .connected(threads: snapshot.threads.count)
+            // Before the events, so a thread's first row already carries its name.
+            titlesChanged = update.titles != t3Titles
+            t3Titles = update.titles
+            promptSubmitted = update.promptSubmitted
+            // Once per value: a status this was not written against means a nightly
+            // changed the model, and the thread is showing white because of it.
+            let unknown = Set(snapshot.threads.flatMap { [$0.status, $0.activityRunStatus] }
+                .compactMap { $0 })
+                .subtracting(T3Code.knownStatuses)
+                .subtracting(t3UnknownStatuses)
+            if !unknown.isEmpty {
+                t3UnknownStatuses.formUnion(unknown)
+                Log.write("t3: unknown status \(unknown.sorted().joined(separator: ", ")) — shown as idle")
+            }
+        case let .unavailable(why, detail):
+            // A server that is gone may be relaunching, so its keys wait out the grace.
+            // A token or protocol problem will not fix itself by waiting.
+            emissions = why == .serverDown ? t3.serverLost(now: Date()) : t3.reset()
+            status = why
+            reason = detail
+        }
+
+        model.apply(t3Status: status)
+        lastT3Log = Log.changed("t3", last: lastT3Log, to: status.summary + (reason.map { " (\($0))" } ?? ""))
+
+        for emission in emissions {
+            await handle(HookServer.Event(raw: emission.payload))
+        }
+        if titlesChanged { publish() }
+        if promptSubmitted, voiceIsActive {
+            setVoice(false, why: "prompt submitted (T3)")
+        }
+        switch status {
+        case .connected: return .milliseconds(1500)
+        case .noToken, .serverDown: return .seconds(5)
+        // Neither fixes itself, and a saved token restarts the loop at once anyway.
+        case .tokenRejected, .protocolMismatch: return .seconds(30)
+        }
+    }
+
+    /**
+     Approve or reject the one orange T3 thread, through T3's API.
+
+     Not ⏎ and ⎋: T3's approval UI is buttons with no keyboard shortcut. But the same
+     rule as a terminal: the thread is brought up first, and the answer goes only once T3
+     is in front *showing that thread* — so you see the prompt being answered, and a
+     raise that did not land answers nothing.
+     */
+    private func respondInT3(_ decision: Actions.Decision, target: SlotView, key: String) {
+        guard let sessionID = target.sessionID,
+              let threadID = T3Code.threadID(fromSession: sessionID)
+        else { return }
+        let raised = Focus.raise(target)
+        // A question needs an answer typed in T3, and T3 itself refuses to dismiss one
+        // from outside while the turn is live. Taking you there is the whole answer.
+        if target.pendingTool == "user_input" {
+            Log.write("key \(key): slot \(target.slot) is a question waiting — answer it in T3 (\(raised))")
+            return
+        }
+        let answer = decision == .approve ? "accept" : "decline"
+        Task {
+            var landed = false
+            let deadline = Date().addingTimeInterval(1.5)
+            while !landed, Date() < deadline {
+                landed = T3Window.isFrontmost ? await T3Window.focusedThreadID() == threadID : false
+                if !landed { try? await Task.sleep(for: .milliseconds(80)) }
+            }
+            guard landed else {
+                Log.write("key \(key): slot \(target.slot) never came forward in T3 (\(raised)) — not sent")
+                return
+            }
+            // Read after the raise, from the latest snapshot: a request answered in T3
+            // meanwhile is gone, and its id must not be sent.
+            guard let requestID = t3.pendingRequestID(forSession: sessionID) else {
+                Log.write("key \(key): slot \(target.slot) has nothing pending any more — already answered")
+                return
+            }
+            let result = await t3Client.respond(threadID: threadID, requestID: requestID, decision: answer)
+            switch result {
+            case .sent:
+                Log.write("key \(key): \(answer) sent to slot \(target.slot) (T3)")
+            case let .failed(detail):
+                Log.write("key \(key): T3 refused the \(answer) for slot \(target.slot): \(detail)")
             }
         }
     }

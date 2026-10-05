@@ -121,6 +121,9 @@ Claude Code hook (settings.json)
             └─ SessionRegistry   pure value type: who owns which of the six slots
                  └─ BoardController  paints the pad, publishes to BoardModel (UI)
                       └─ HIDDevice / CodexProtocol   the v.oai.* HID RPC
+
+T3 Code's server (GET /api/orchestration/shell, polled ~1.5s, bearer token)
+  └─ T3Client → T3Code.State   diffs threads, synthesizes t3_* events into BoardController.handle
 ```
 
 Two invariants along that path:
@@ -163,8 +166,10 @@ is what makes the suite possible at all.
   vision reads motion before colour.
 - **Harnesses are described by one value** (`Harness.swift`): settings path, events,
   entrypoints, and honest `limitations`. Claude Code is wired end to end and its
-  `settings.json` is merged (with a backup); Hermes and Pi are described, and the app
-  hands over text rather than editing their config.
+  `settings.json` is merged (with a backup); T3 Code is read from its own server with a
+  token, and its Claude threads' own hooks stay refused (`sdk-ts`) or each would hold two
+  keys; Hermes and Pi are described, and the app hands over text rather than editing
+  their config.
 - **Paths: `AppPaths.swift` is the authority.** State, calibration, registry and the
   socket live in `~/Library/Application Support/OpenBoard/`; logs in
   `~/Library/Logs/OpenBoard/app.log`. `~/.claude/openboard/` is a legacy fallback only —

@@ -116,6 +116,13 @@ public enum AppPaths {
         state(env: env).appendingPathComponent("hook.sock")
     }
 
+    /// The bearer token for T3 Code's server. See `T3Code.readToken`.
+    public static func t3Token(
+        env: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL {
+        state(env: env).appendingPathComponent("t3code.token")
+    }
+
     private static func overrideDirectory(env: [String: String]) -> URL? {
         guard let override = env["OPENBOARD_HOME"], !override.isEmpty else { return nil }
         return URL(fileURLWithPath: override)

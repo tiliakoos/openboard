@@ -66,6 +66,9 @@ public struct Harness: Sendable, Identifiable, Equatable {
         case automatic
         /// The user pastes it. The payload is what to paste, and where.
         case manual(path: String, snippet: String)
+        /// Nothing to wire: OpenBoard reads the agent's own server, and needs a token
+        /// for it. The payload mints one, with `TOKEN_FILE` standing for where it goes.
+        case token(mintCommand: String)
     }
 
     public let setup: Setup
@@ -384,7 +387,61 @@ extension Harness {
         )
     )
 
+    /**
+     T3 Code, for every provider it runs.
+
+     The one harness with no hooks in it. T3's thread model already knows what every
+     thread is doing, whichever agent runs it, so OpenBoard reads that from T3's local
+     server and synthesizes the events — see `T3Code`. What it needs from you is a token,
+     because that server answers nothing without one.
+
+     T3's Claude threads also fire Claude Code's hooks, as an embedded SDK client, and
+     those stay refused: admitting them would put every Claude thread on two keys.
+     */
+    public static let t3code = Harness(
+        id: T3Code.harnessID,
+        name: "T3 Code",
+        isSupported: true,
+        settingsPath: nil,
+        entrypointVariable: nil,
+        entrypoints: [],
+        events: [
+            ("t3_working", nil),
+            ("t3_awaiting", nil),
+            ("t3_done", nil),
+            ("t3_error", nil),
+            ("t3_idle", nil),
+            ("t3_released", nil),
+        ],
+        surfaces: [
+            Surface(
+                id: "t3code",
+                name: "T3 Code",
+                detection: "Every thread's status, read from T3's local server about every "
+                    + "second and a half. Claude, Codex and any other provider alike.",
+                jump: "Opens that thread by its sidebar row, then brings T3 Code forward. "
+                    + "A thread not in the sidebar — inside a collapsed project — only "
+                    + "brings T3 forward."
+            ),
+            Surface(
+                id: "child",
+                name: "Child threads",
+                detection: "A thread whose parent delegated it.",
+                jump: "—",
+                unsupported: "Never given a key, by design: one fan-out would take all six "
+                    + "at once."
+            ),
+        ],
+        limitations: [
+            "A question is never answered from the pad: approve and reject open it in T3 "
+                + "instead.",
+            "A thread that had already finished when OpenBoard started stays off the board "
+                + "until it runs again.",
+        ],
+        setup: .token(mintCommand: T3Code.mintCommand)
+    )
+
     /// Every harness the app knows about.
-    public static let all: [Harness] = [.claudeCode, .hermes, .pi]
+    public static let all: [Harness] = [.claudeCode, .t3code, .hermes, .pi]
 
 }

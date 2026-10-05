@@ -2,7 +2,7 @@
 
 [← back to the README](../README.md)
 
-OpenBoard is built around Claude Code and knows about two other agents. They are not
+OpenBoard is built around Claude Code and knows about three other agents. They are not
 equally supported, and the app says so rather than pretending otherwise — a harness that
 can never turn a key green is not a harness with a small gap, it is a different product.
 
@@ -40,6 +40,43 @@ first.
 
 This is the one that has been used daily for months, against real work, on real hardware.
 Every bug the project has fixed came from that.
+
+## T3 Code
+
+Wired, for every provider T3 runs — Claude, Codex and the rest — and read from T3's own
+local server rather than from hooks. One key per thread, the same colours as a terminal
+session, and keys that stick.
+
+| | |
+|---|---|
+| **Status** | T3's thread status, polled about every 1.5s. Orange is a pending approval or question; `waiting` (checkpointing) and an auth refresh are not |
+| **Key press** | opens that thread by its sidebar row, then brings T3 forward. A thread not in the sidebar (a collapsed project) only brings T3 forward |
+| **Viewing** | the thread T3 is showing breathes, read from its window's route |
+| **Approve / reject** | through T3's API, after opening the thread and confirming it is in front. Only when exactly one key is orange |
+
+**Setup is a token.** Settings → Agents → T3 Code shows a command that mints one with
+T3's own CLI and writes it straight into `~/Library/Application Support/OpenBoard/t3code.token`
+(0600). Pasting a token there works too. To revoke it, list T3's sessions and revoke the
+one labelled OpenBoard:
+
+```sh
+ELECTRON_RUN_AS_NODE=1 "/Applications/T3 Code (Nightly).app/Contents/MacOS/T3 Code (Nightly)" "/Applications/T3 Code (Nightly).app/Contents/Resources/app.asar/apps/server/dist/bin.mjs" auth session list --base-dir "$HOME/.t3"
+```
+
+then the same command with `auth session revoke <id>`.
+
+Limits:
+
+> **A question is never answered from the pad.** Approve and reject open it in T3
+> instead — T3 itself refuses to dismiss a live question from outside.
+>
+> **A thread already finished when OpenBoard starts stays off the board** until it runs
+> again. Eighteen old greens are a history, not a board.
+
+Delegated and subagent threads never take a key. T3 quitting keeps every key for a
+minute, so an update's relaunch costs nothing; past that, its keys are given up. Jump and
+viewing turn on T3's accessibility tree, which stays on until T3 relaunches — measured at
+no cost to its CPU while a reply streams.
 
 ## Hermes Agent
 

@@ -610,6 +610,26 @@ public enum EventMapper {
             return .idle
         case "session_shutdown":
             return .ended
+
+        /*
+         T3 Code.
+
+         Not hooks: `T3Code` reads T3's server and synthesizes these, one per change in
+         a thread's phase. Named apart from Claude's so muting one harness's event in
+         the pane never mutes the other's.
+        */
+        case "t3_working":
+            return .working
+        case "t3_awaiting":
+            return .awaiting
+        case "t3_done":
+            return .done
+        case "t3_error":
+            return .error
+        case "t3_idle":
+            return .idle
+        case "t3_released":
+            return .ended
         case "Notification":
             guard let matcher else { return nil }
             // Anything absent is not per-session status — agent_completed and

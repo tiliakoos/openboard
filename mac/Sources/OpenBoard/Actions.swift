@@ -309,6 +309,9 @@ enum Actions {
         case ambiguous(slots: [Int])
         case focusFailed(slot: Int, reason: String)
         case failed(String)
+        /// A T3 Code thread. Answered through T3's API by the controller, which holds the
+        /// connection — there is no dialog here to send a key to.
+        case handOff(SlotView)
     }
 
     /**
@@ -333,6 +336,7 @@ enum Actions {
         }
 
         let target = pending[0]
+        if target.origin == .t3code { return .handOff(target) }
         // Warp can be raised but not confirmed: nothing outside it can read which pane
         // is in front, and a ⏎ sent before the switch lands goes to the tab you were in.
         guard target.origin != .warp else {

@@ -80,6 +80,8 @@ struct BoardCommands: Sendable {
     /// and a repaint applies it, so there is no save button to forget.
     var bindingsChanged: @MainActor () -> Void = {}
     var reconnect: @MainActor () -> Void = {}
+    /// The T3 Code token was saved or removed. Asks T3 again now.
+    var t3TokenChanged: @MainActor () -> Void = {}
     /// Show one state on the pad. A color at 55% on an emissive key is not a swatch
     /// at 55% opacity, so the only honest preview is the hardware itself.
     var previewState: @MainActor (SessionState) -> Void = { _ in }
@@ -216,6 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         jump: { [weak self] slot in self?.controller?.jumpFromUI(slot) },
         bindingsChanged: { [weak self] in self?.controller?.bindingsChanged() },
         reconnect: { [weak self] in self?.controller?.reconnect() },
+        t3TokenChanged: { [weak self] in self?.controller?.t3TokenChanged() },
         previewState: { [weak self] state in self?.controller?.preview(state) },
         resetColors: { [weak self] in
             self?.board.resetToDefaults()

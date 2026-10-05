@@ -60,7 +60,7 @@ public enum HarnessDetector {
     }
 
     /**
-     The three, in sidebar order.
+     The four, in sidebar order.
 
      It listed ten more for a while — Codex, Cursor, Zed and the rest — under a heading
      that told you what OpenBoard *cannot* light. That was a screenful of grey rows
@@ -72,6 +72,10 @@ public enum HarnessDetector {
         Agent(
             id: "claude", name: "Claude Code", harnessID: "claude-code",
             homePaths: [".claude"], commands: ["claude"]
+        ),
+        Agent(
+            id: "t3code", name: "T3 Code", harnessID: "t3code",
+            homePaths: [".t3"], bundles: ["T3 Code (Nightly).app", "T3 Code (Alpha).app"]
         ),
         Agent(
             id: "hermes", name: "Hermes Agent", harnessID: "hermes",

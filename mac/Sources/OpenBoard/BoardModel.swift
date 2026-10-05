@@ -25,6 +25,9 @@ final class BoardModel: ObservableObject {
     @Published private(set) var deviceSerial: String?
     /// The pad's own report. Battery here works on USB too, unlike `BatteryMonitor`.
     @Published private(set) var padStatus: PadStatus?
+    /// Whether T3 Code's server is being read. Its harness has no hooks to audit, so this
+    /// is what "connected" means for it.
+    @Published private(set) var t3Status: T3Code.Status = .noToken
 
     /**
      What to call the pad on screen.
@@ -138,6 +141,10 @@ final class BoardModel: ObservableObject {
     func apply(slots: [SlotView]) { self.slots = slots }
 
     func apply(device: DeviceStatus) { self.device = device }
+
+    func apply(t3Status: T3Code.Status) {
+        if self.t3Status != t3Status { self.t3Status = t3Status }
+    }
 
     func apply(isWired: Bool) { self.isWired = isWired }
 

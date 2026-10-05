@@ -263,6 +263,8 @@ public enum SessionOrigin: String, Sendable, Equatable {
     /// renames someone's app is a small wrongness the reader has to look past.
     case cmux = "cmux"
     case warp = "Warp"
+    /// A T3 Code thread. Not a process at all, so no host or tty can say so.
+    case t3code = "T3 Code"
     case cli = "CLI"
 
     /// Decided from the entrypoint, then from which application actually owns the
@@ -274,6 +276,7 @@ public enum SessionOrigin: String, Sendable, Equatable {
         host: ProcessAncestry.Host = .unknown
     ) -> SessionOrigin {
         if entrypoint == "claude-vscode" { return .vscode }
+        if entrypoint == T3Code.entrypoint { return .t3code }
         // A tty is not enough. VS Code's integrated terminal allocates a real pty, so
         // a session there is indistinguishable from a Terminal tab by entrypoint and
         // tty alone — which is why this used to label it "Terminal" and then fail to
@@ -315,8 +318,11 @@ public enum SessionTranscript {
         sessionID: String,
         root: URL? = nil
     ) -> String? {
-        // A discovered host has no real id yet; there is nothing to find.
-        guard !sessionID.isEmpty, !Discovery.isPlaceholder(sessionID) else { return nil }
+        // A discovered host has no real id yet, and a T3 thread has no transcript here;
+        // either way there is nothing to find.
+        guard !sessionID.isEmpty, !Discovery.isPlaceholder(sessionID),
+              !sessionID.hasPrefix(T3Code.sessionPrefix)
+        else { return nil }
 
         let projects = root ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude/projects")
