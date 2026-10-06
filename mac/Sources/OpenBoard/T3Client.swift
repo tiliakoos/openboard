@@ -19,6 +19,9 @@ actor T3Client {
         /// answering, or answering with something that does not decode — the reason is
         /// kept for the log.
         case unavailable(T3Code.Status, reason: String? = nil)
+        /// The server is there but did not answer in time: busy, typically starting a
+        /// thread. Unlike down, worth asking again at the usual pace.
+        case timedOut
     }
 
     private let session: URLSession
@@ -77,6 +80,8 @@ actor T3Client {
             return .snapshot(try JSONDecoder().decode(T3Code.ShellSnapshot.self, from: data))
         } catch let error as DecodingError {
             return .unavailable(.serverDown, reason: "shell did not decode: \(String("\(error)".prefix(200)))")
+        } catch let error as URLError where error.code == .timedOut {
+            return .timedOut
         } catch {
             return .unavailable(.serverDown, reason: "shell request failed: \(error.localizedDescription)")
         }
