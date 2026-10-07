@@ -1460,19 +1460,9 @@ final class BoardController: ObservableObject {
         }
 
         /*
-         Session ended — drop the entry so the slot becomes reclaimable immediately.
-
-         `.ended` renders as OFF (identical to an unused slot), and leaving the entry
-         in place makes `pickSlot` prefer any other unused key over this one. So a
-         Terminal tab you closed keeps its slot dark while the next session lights up
-         somewhere else — which was the whole "slots crawl right until eviction takes
-         over" behaviour that the reclaim path was supposed to prevent, but only
-         gets to prevent once *all* slots are occupied.
-
-         Dropping releases the slot at ordering 1 in `pickSlot` (unused wins), so the
-         next new session lands here rather than somewhere new. `SessionTitle.forget`
-         drops the cached transcript name too, or the reused slot would carry the
-         old chat's title until the next enrich.
+         Session ended — drop the entry and shift later sessions up to close the gap.
+         CLI endings and T3 releases share this path. `SessionTitle.forget` drops the
+         departed session's cached transcript name; the remaining sessions keep theirs.
          */
         if state == .ended {
             mutedSessions.remove(sessionID)

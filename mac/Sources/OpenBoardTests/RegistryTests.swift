@@ -204,6 +204,46 @@ func runRegistryTests() {
         expect(rows[1].entry == nil)
     }
 
+    test("releasing a session shifts only later keys and preserves their sessions") {
+        let orders: [[String?]] = [["s2", "s3", nil], ["s1", "s3", nil], ["s1", "s2", nil]]
+        for removed in 1...3 {
+            var registry = SessionRegistry()
+            for i in 1...3 {
+                _ = registry.claim(
+                    sessionID: "s\(i)", cwd: "/project\(i)", pid: i, tty: "/dev/ttys\(i)",
+                    transcriptPath: "/chat\(i).jsonl", entrypoint: "cli",
+                    state: i == 2 ? .done : .working, isAlive: alwaysAlive
+                )
+            }
+            registry.setState(sessionID: "s3", to: .awaiting, pendingTool: "Bash")
+            registry.adjustDelegation(sessionID: "s3", event: "SubagentStart", agentID: "agent")
+            let before = registry.entries
+            expect(registry.release(sessionID: "s\(removed)"))
+            expectEqual(registry.occupancy().prefix(3).map { $0.entry?.sessionID }, orders[removed - 1])
+            for entry in before where entry.sessionID != "s\(removed)" {
+                var after = try Harness.require(registry.entry(forSession: entry.sessionID))
+                after.slot = entry.slot
+                expectEqual(after, entry, "moving a session must only change its slot")
+            }
+            expectEqual(registry.cursor, 3)
+            let released = registry
+            expect(!registry.release(sessionID: "s\(removed)"))
+            expectEqual(registry, released, "a duplicate release must not move any keys")
+        }
+    }
+
+    test("closing a gap respects action keys and manually reordered sessions") {
+        var registry = SessionRegistry()
+        registry.reserve([2, 5])
+        for i in 1...4 { _ = registry.claim(sessionID: "s\(i)", isAlive: alwaysAlive) }
+        expect(registry.move(sessionID: "s1", toSlot: 6))
+        expect(registry.release(sessionID: "s2"))
+        expectEqual(
+            registry.occupancy().map { $0.entry?.sessionID }, ["s4", nil, "s3", "s1", nil, nil]
+        )
+        expectEqual(registry.reserved, [2, 5])
+    }
+
     // MARK: - moving
 
     test("moving to a free key frees the old one, and the next session lands there") {
@@ -711,17 +751,18 @@ func runPruneTests() {
         let dead: Set<Int> = [100, 300]
         expectEqual(registry.prune(isAlive: { pid in !dead.contains(pid ?? 0) }), 2)
         expectEqual(registry.entries.map(\.sessionID), ["s200"])
+        expectEqual(registry.entry(forSession: "s200")?.slot, 1)
     }
 
-    test("pruning frees the key for reuse") {
+    test("pruning closes the gap before a new session claims a key") {
         var registry = board([100, 200])
-        let slot = try Harness.require(registry.entry(forSession: "s100")?.slot)
         _ = registry.prune(isAlive: { $0 == 200 })
+        expectEqual(registry.entry(forSession: "s200")?.slot, 1)
 
         let claimed = registry.claim(
             sessionID: "new", pid: 999, isAlive: { _ in true }
         )
-        expectEqual(claimed.entry?.slot, slot, "the freed key was not reused")
+        expectEqual(claimed.entry?.slot, 2)
     }
 
     test("a finished session with a live process keeps its key") {

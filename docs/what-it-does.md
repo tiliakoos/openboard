@@ -15,8 +15,8 @@ physical key you can see without looking at a screen.
 
 ## One key per session
 
-Each Claude Code session claims one of the six Agent keys when it starts and **keeps it**
-for as long as it runs. The key's colour is that session's state.
+Each Claude Code session claims one of the six Agent keys when it starts. The key's
+colour is that session's state.
 
 | State | Colour | What it means |
 |---|---|---|
@@ -32,15 +32,15 @@ look. It clears when you go back and send that session something — not on a ti
 not when you merely glance at it. Status that expires on its own is status you learn to
 distrust.
 
-## Keys do not move
+## Closing a session closes the gap
 
-A session keeps its key. Keys are reused only after six newer sessions have cycled
-through, and never one that is currently signalling *awaiting*.
+Closing a CLI session or settling a T3 thread shifts the sessions on later keys up,
+preserving their order and skipping keys bound to actions. Earlier keys stay put. Close
+the session on key 2 and the one on key 3 moves to key 2; key 1 stays where it was.
 
-This is deliberately unlike Codex's "most recent chats" mode, where your key number is
-your rank in a live recency sort — so typing in one chat repaints four others. If the
-meaning of key 3 changes while you are not looking, the board is worse than nothing,
-because you will act on it anyway.
+Ordinary activity and turn completion do not reorder keys. A finished turn stays green
+on the board until you return to it or dismiss the session. When every session key is
+occupied, eviction never takes one that is currently signalling *awaiting*.
 
 ## The ring says it from across the room
 

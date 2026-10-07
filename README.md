@@ -88,9 +88,10 @@ motion before hue, so a failure must never be mistakable for a completion.
 
 ## How keys are assigned
 
-A session claims a key when it starts and **keeps it**. Keys are reused only once six
-newer sessions have cycled through, and never one that is currently signalling *awaiting
-input*.
+A session claims the lowest free key when it starts. Closing a CLI session or settling a
+T3 thread shifts later sessions up to close the gap, preserving their order and skipping
+keys bound to actions. Earlier sessions stay put. Finishing a turn keeps the session on
+the board; when all session keys are occupied, eviction never takes one awaiting input.
 
 This is deliberately unlike Codex's "most recent chats" mode, where a key number is your
 rank in a live recency sort — so typing in one chat can repaint four other keys. Status

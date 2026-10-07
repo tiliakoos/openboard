@@ -324,11 +324,9 @@ public struct SessionRegistry: Sendable, Equatable {
         now: Date = Date(),
         isAlive: (Int?) -> Bool = SessionRegistry.processIsAlive
     ) -> Int {
-        let before = entries.count
-        entries.removeAll { entry in
-            entry.pid != nil && !isAlive(entry.pid)
-        }
-        return before - entries.count
+        let dead = entries.filter { $0.pid != nil && !isAlive($0.pid) }.map(\.sessionID)
+        for sessionID in dead { release(sessionID: sessionID) }
+        return dead.count
     }
 
     /**
@@ -433,13 +431,6 @@ public struct SessionRegistry: Sendable, Equatable {
     }
 
     /**
-     Forget one session, freeing its key.
-
-     The cursor is deliberately **not** rewound: `claimSeq` must stay monotonic or the
-     next claim reuses a number and "oldest claim" — which is how eviction chooses a
-     victim — starts pointing at the wrong key.
-     */
-    /**
      Give up the keys held by surfaces the board is no longer listening to.
 
      Needed because muting is retroactive. A switch that only stopped *future* sessions
@@ -466,11 +457,27 @@ public struct SessionRegistry: Sendable, Equatable {
         return slots
     }
 
+    /**
+     Forget one session and close the gap with sessions on later keys, in slot order.
+     Earlier keys and reserved action keys stay put. Only slots change: session state,
+     metadata, timestamps and claim order travel with their session.
+
+     The cursor is deliberately not rewound: eviction still depends on claim age.
+     */
     @discardableResult
     public mutating func release(sessionID: String) -> Bool {
-        let before = entries.count
-        entries.removeAll { $0.sessionID == sessionID }
-        return entries.count != before
+        guard let index = entries.firstIndex(where: { $0.sessionID == sessionID }) else {
+            return false
+        }
+        let freedSlot = entries.remove(at: index).slot
+        var nextSlot = freedSlot
+        for index in entries.indices.sorted(by: { entries[$0].slot < entries[$1].slot })
+            where entries[index].slot > freedSlot {
+            while reserved.contains(nextSlot) { nextSlot += 1 }
+            entries[index].slot = nextSlot
+            nextSlot += 1
+        }
+        return true
     }
 
     /**

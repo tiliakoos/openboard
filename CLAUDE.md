@@ -152,9 +152,10 @@ is what makes the suite possible at all.
 
 ### Load-bearing decisions
 
-- **Keys are sticky, not recency-ranked.** A session claims a slot and keeps it; slots are
-  reused only after six newer sessions cycle through, and never one currently signalling
-  `awaiting`. Deliberately unlike Codex's live recency sort — see `SessionRegistry`.
+- **Keys preserve session order, not recency rank.** Closing a CLI session or settling a
+  T3 thread shifts later sessions up, skipping reserved action keys. Earlier sessions
+  stay put; ordinary activity and turn completion do not reorder keys. When full,
+  eviction never takes a key currently signalling `awaiting` — see `SessionRegistry`.
 - **Eligibility is fail-closed.** `Eligibility.defaultEntrypoints` is an allowlist
   (`cli`, `claude-vscode`). Subagents and embedded SDK clients get no key. An unrecognised
   surface gets nothing rather than stealing a slot.

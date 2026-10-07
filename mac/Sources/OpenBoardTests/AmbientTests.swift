@@ -228,7 +228,7 @@ func runAuditFollowUpTests() {
         expectEqual(prefs.ambient.fixed.brightness, Preferences.default.ambient.fixed.brightness)
     }
 
-    test("releasing one slot frees only that slot") {
+    test("releasing one session keeps the others and closes the gap") {
         // The CLI had `release --slot N`; the app only had "forget all", which is a
         // poor answer to one row being wrong.
         var registry = SessionRegistry()
@@ -243,18 +243,18 @@ func runAuditFollowUpTests() {
         expect(registry.release(sessionID: "s2"))
         expect(registry.entry(forSession: "s2") == nil, "the slot was not freed")
         expectEqual(registry.entries.count, 2)
-        expect(registry.entry(forSession: "s1") != nil, "an unrelated session was dropped")
-        expect(registry.entry(forSession: "s3") != nil)
+        expectEqual(registry.entry(forSession: "s1")?.slot, 1)
+        expectEqual(registry.entry(forSession: "s3")?.slot, 2)
 
         // Releasing something that is not there is not an error.
         expect(!registry.release(sessionID: "nobody"))
 
-        // The freed key is reusable, and the claim counter never rewinds — claimSeq
+        // The next free key is reusable, and the claim counter never rewinds — claimSeq
         // must stay monotonic or eviction starts choosing the wrong key.
         let result = registry.claim(
             sessionID: "s4", pid: 999, now: now, isAlive: { _ in true }
         )
-        expectEqual(result.entry?.slot, target.slot, "the freed key was not reused")
+        expectEqual(result.entry?.slot, 3)
         expect((result.entry?.claimSeq ?? 0) > target.claimSeq, "claimSeq went backwards")
     }
 }
