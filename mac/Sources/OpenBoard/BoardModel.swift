@@ -180,8 +180,8 @@ struct SlotView: Identifiable, Equatable {
     var entrypoint: String?
     /// Whether `title` is the session's own name or a fallback to its folder.
     var isNamed: Bool = false
-    /// The real working directory. `project` is its *display* form with the home
-    /// directory shortened to `~`, which is not a path anything can open.
+    /// The real working directory. `project` is only the repo's name, which is not a
+    /// path anything can open.
     var cwd: String?
 
     var id: Int { slot }
@@ -227,11 +227,19 @@ struct SlotView: Identifiable, Equatable {
         return 0.45 + 0.55 * appearance.brightness
     }
 
-    /// The second line, beside the origin badge. See `SessionDetail`.
-    var detail: String {
-        SessionDetail.line(
-            terminal: surface, project: project, age: age, isNamed: isNamed
-        )
+    /// The second line, beside the origin badge: the project, brighter than the rest
+    /// because it is what tells rows apart, then `SessionDetail`.
+    var detail: Text? {
+        let rest = SessionDetail.line(terminal: surface, age: age, isNamed: isNamed)
+        guard let project, !project.isEmpty else { return rest.isEmpty ? nil : Text(rest) }
+        let name = Text(project).foregroundStyle(.secondary)
+        return rest.isEmpty ? name : Text("\(name) · \(rest)")
+    }
+
+    /// The full path, for the row's tooltip, with the home directory shortened to `~`.
+    var path: String? {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return cwd.map { $0.hasPrefix(home) ? "~" + $0.dropFirst(home.count) : $0 }
     }
 
     /// Kept for the settings window, which shows one line rather than two.

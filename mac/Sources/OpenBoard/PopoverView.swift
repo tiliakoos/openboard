@@ -416,6 +416,7 @@ struct SessionRow: View {
         ZStack(alignment: .trailing) {
             Button(action: jump) { rowContent }
                 .buttonStyle(HoverRowStyle())
+                .help(slot.path ?? "")
                 // Not `.disabled`: a disabled button stops reporting hover, and the
                 // controls' visibility depends on it.
                 .allowsHitTesting(slot.isOccupied)
@@ -483,12 +484,12 @@ struct SessionRow: View {
                 if slot.isOccupied {
                     HStack(spacing: 5) {
                         if let origin = slot.origin { OriginBadge(origin: origin) }
-                        if !slot.detail.isEmpty {
-                            Text(slot.detail)
+                        if let detail = slot.detail {
+                            detail
                                 .font(.system(size: 11))
                                 .foregroundStyle(.tertiary)
                                 .lineLimit(1)
-                                .truncationMode(.middle)
+                                .truncationMode(.tail)
                         }
                     }
                 }

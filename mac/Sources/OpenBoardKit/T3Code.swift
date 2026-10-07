@@ -71,6 +71,7 @@ public enum T3Code {
 
     public struct ProjectShell: Decodable, Sendable {
         public let id: String
+        public let title: String?
         public let workspaceRoot: String?
     }
 
@@ -221,6 +222,9 @@ public enum T3Code {
         /// Thread titles by session id, for every thread holding a key. T3 regenerates
         /// titles, so the row's name comes from here rather than from a transcript.
         public var titles: [String: String] = [:]
+        /// Project titles by session id, as T3's sidebar names them. A worktree thread's
+        /// folder is named for its branch, so the path cannot say which project it is.
+        public var projects: [String: String] = [:]
         /// A message was sent in some thread since the last snapshot. Ends dictation, as
         /// `UserPromptSubmit` does for a terminal session.
         public var promptSubmitted = false
@@ -266,8 +270,8 @@ public enum T3Code {
 
         public mutating func apply(_ snapshot: ShellSnapshot, now: Date) -> Update {
             lostAt = nil
-            let roots = Dictionary(
-                snapshot.projects.map { ($0.id, $0.workspaceRoot) },
+            let projects = Dictionary(
+                snapshot.projects.map { ($0.id, $0) },
                 uniquingKeysWith: { first, _ in first }
             )
             var update = Update()
@@ -312,7 +316,7 @@ public enum T3Code {
                 update.emissions.append(Emission(
                     threadID: thread.id,
                     event: phase.eventName,
-                    cwd: thread.worktreePath ?? thread.projectId.flatMap { roots[$0] ?? nil },
+                    cwd: thread.worktreePath ?? thread.projectId.flatMap { projects[$0]?.workspaceRoot },
                     requestKind: phase == .awaiting ? thread.pendingRuntimeRequest?.kind : nil
                 ))
             }
@@ -328,6 +332,9 @@ public enum T3Code {
             for thread in snapshot.threads where tracked[thread.id] != nil {
                 if let title = thread.title, !title.isEmpty {
                     update.titles[T3Code.sessionPrefix + thread.id] = title
+                }
+                if let project = thread.projectId.flatMap({ projects[$0]?.title }) {
+                    update.projects[T3Code.sessionPrefix + thread.id] = project
                 }
             }
             primed = true

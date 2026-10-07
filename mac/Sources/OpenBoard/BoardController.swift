@@ -75,6 +75,7 @@ final class BoardController: ObservableObject {
     private let t3Client = T3Client()
     private var t3 = T3Code.State()
     private var t3Titles: [String: String] = [:]
+    private var t3Projects: [String: String] = [:]
     private var t3Task: Task<Void, Never>?
     private var lastT3Log: String?
     private var t3UnknownStatuses: Set<String> = []
@@ -1256,8 +1257,9 @@ final class BoardController: ObservableObject {
             emissions = update.emissions
             status = .connected(threads: snapshot.threads.count)
             // Before the events, so a thread's first row already carries its name.
-            titlesChanged = update.titles != t3Titles
+            titlesChanged = update.titles != t3Titles || update.projects != t3Projects
             t3Titles = update.titles
+            t3Projects = update.projects
             promptSubmitted = update.promptSubmitted
             // Once per value: a status this was not written against means a nightly
             // changed the model, and the thread is showing white because of it.
@@ -2263,7 +2265,7 @@ final class BoardController: ObservableObject {
                 // What you asked for, falling back to the folder. Two sessions in one
                 // repo are otherwise identical rows.
                 title: name ?? entry.cwd.map { URL(fileURLWithPath: $0).lastPathComponent },
-                project: entry.cwd.map(Self.shorten),
+                project: t3Projects[entry.sessionID] ?? entry.cwd.map(Self.projectName),
                 surface: entry.tty.map { $0.replacingOccurrences(of: "/dev/", with: "") }
                     ?? entry.entrypoint,
                 age: Self.age(of: entry.updatedAt),
@@ -2287,9 +2289,10 @@ final class BoardController: ObservableObject {
         RegistryStore.save(registry)
     }
 
-    private static func shorten(_ path: String) -> String {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
+    private static func projectName(_ path: String) -> String {
+        ProjectName.of(path: path, home: FileManager.default.homeDirectoryForCurrentUser.path) {
+            FileManager.default.fileExists(atPath: $0 + "/.git")
+        }
     }
 
     private static func age(of date: Date) -> String {

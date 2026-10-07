@@ -366,11 +366,12 @@ public enum SessionTranscript {
 }
 
 /**
- The second line of a session row.
+ The second line of a session row, after the project name.
 
- Pure, and in the Kit rather than in the view, so the one rule that matters can be
- tested: a session with no name of its own must still be distinguishable from the five
- others in the same repo.
+ The project leads and is styled apart by the view, so it sits in the same place on
+ every row. Pure, and in the Kit rather than in the view, so the one rule that matters
+ can be tested: a session with no name of its own must still be distinguishable from the
+ five others in the same repo.
  */
 public enum SessionDetail {
     /**
@@ -381,13 +382,40 @@ public enum SessionDetail {
      */
     public static func line(
         terminal: String?,
-        project: String?,
         age: String?,
         isNamed: Bool
     ) -> String {
-        [isNamed ? nil : terminal, project, age]
+        [isNamed ? nil : terminal, age]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
+    }
+}
+
+/**
+ What a row calls a session's project: the repo's folder name, not its path.
+
+ Every session lives under the same few parent folders, so a path truncated to fit the
+ row kept the shared start and cut the one part that differs.
+ */
+public enum ProjectName {
+    /**
+     - Parameter isRepoRoot: whether a directory holds `.git`. Injected so the walk is
+       testable without a filesystem.
+     */
+    public static func of(path: String, home: String, isRepoRoot: (String) -> Bool) -> String {
+        // A Claude Code worktree is a checkout of the repo it sits in, and its own folder
+        // is named for the branch.
+        if let marker = path.range(of: "/.claude/worktrees/") {
+            return (String(path[..<marker.lowerBound]) as NSString).lastPathComponent
+        }
+        // Started in a subfolder: name the repo, not `mac` or `src`. Stops short of home,
+        // which may be a dotfiles repo, and would then name every session after the user.
+        var dir = path
+        while dir.hasPrefix("/"), dir != "/", dir != home {
+            if isRepoRoot(dir) { return (dir as NSString).lastPathComponent }
+            dir = (dir as NSString).deletingLastPathComponent
+        }
+        return (path as NSString).lastPathComponent
     }
 }

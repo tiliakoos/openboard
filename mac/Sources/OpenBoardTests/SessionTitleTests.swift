@@ -381,32 +381,53 @@ func runTranscriptLocateTests() {
 func runRowDetailTests() {
     test("an unnamed session shows its tty, a named one does not") {
         // Six identical "Projects" rows is the failure this exists to prevent.
-        let unnamed = SessionDetail.line(
-            terminal: "ttys004", project: "~/Developer/Projects", age: "12m", isNamed: false
-        )
+        let unnamed = SessionDetail.line(terminal: "ttys004", age: "12m", isNamed: false)
         expect(unnamed.contains("ttys004"), "nothing distinguishes this row")
 
-        let named = SessionDetail.line(
-            terminal: "ttys004", project: "~/Developer/Projects", age: "12m", isNamed: true
-        )
+        let named = SessionDetail.line(terminal: "ttys004", age: "12m", isNamed: true)
         expect(!named.contains("ttys004"), "the tty is noise once there is a name")
         expect(named.contains("12m"))
     }
 
     test("the detail line survives missing pieces") {
-        // A session can reach the board with no cwd and no tty at all.
-        expectEqual(
-            SessionDetail.line(terminal: nil, project: nil, age: nil, isNamed: false), ""
-        )
+        // A session can reach the board with no tty and no age at all.
+        expectEqual(SessionDetail.line(terminal: nil, age: nil, isNamed: false), "")
         // No stray separators when only one part is present.
         expectEqual(
-            SessionDetail.line(terminal: nil, project: "repo", age: nil, isNamed: true), "repo"
-        )
-        expectEqual(
-            SessionDetail.line(terminal: "", project: "repo", age: "3m", isNamed: false),
-            "repo · 3m",
+            SessionDetail.line(terminal: "", age: "3m", isNamed: false),
+            "3m",
             "an empty tty produced a leading separator"
         )
+    }
+
+    // The rows' project is a name, not a path: every path starts with the same folders,
+    // and truncating one to fit kept those and cut the name.
+    let home = "/Users/me"
+    func name(_ path: String, repos: Set<String> = []) -> String {
+        ProjectName.of(path: path, home: home) { repos.contains($0) }
+    }
+
+    test("a project is its folder's name") {
+        expectEqual(name("/Users/me/Developer/personal/productivity"), "productivity")
+        expectEqual(name("/Users/me/Developer/openboard", repos: ["/Users/me/Developer/openboard"]), "openboard")
+    }
+
+    test("a session started in a subfolder is named for its repo") {
+        expectEqual(
+            name("/Users/me/Developer/openboard/mac/Sources", repos: ["/Users/me/Developer/openboard"]),
+            "openboard"
+        )
+    }
+
+    test("a Claude Code worktree is named for its repo, not its branch") {
+        expectEqual(name("/Users/me/Developer/openboard/.claude/worktrees/fix-ring"), "openboard")
+        expectEqual(name("/Users/me/Developer/openboard/.claude/worktrees/fix-ring/mac"), "openboard")
+    }
+
+    test("a dotfiles repo at home does not name every session") {
+        expectEqual(name("/Users/me/Documents/notes", repos: [home]), "notes")
+        // Nor does one above home, or the walk running past the root.
+        expectEqual(name("/tmp/scratch"), "scratch")
     }
 }
 

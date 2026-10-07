@@ -250,6 +250,15 @@ func runT3CodeTests() {
         expectEqual(update.titles, ["t3:a": "Fix the ring"])
     }
 
+    test("a thread's project is named as T3 names it, worktree or not") {
+        var state = T3Code.State()
+        let update = state.apply(try snapshot([
+            thread("a", ["status": "running", "worktreePath": "/repo/.t3/worktrees/fix-ring"]),
+            thread("b", ["status": "idle"]),
+        ]), now: now)
+        expectEqual(update.projects, ["t3:a": "Repo"])
+    }
+
     // MARK: - losing the server
 
     test("a server back within the grace keeps every key, green included") {
