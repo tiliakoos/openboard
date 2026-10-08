@@ -157,8 +157,10 @@ is what makes the suite possible at all.
   stay put; ordinary activity and turn completion do not reorder keys. When full,
   eviction never takes a key currently signalling `awaiting` — see `SessionRegistry`.
 - **Eligibility is fail-closed.** `Eligibility.defaultEntrypoints` is an allowlist
-  (`cli`, `claude-vscode`). Subagents and embedded SDK clients get no key. An unrecognised
-  surface gets nothing rather than stealing a slot.
+  (`cli`, `claude-vscode`, `claude-desktop`). Subagents and embedded SDK clients get no key.
+  An unrecognised surface gets nothing rather than stealing a slot. A `claude-desktop`
+  session takes its key at its first real event, not `SessionStart` (the app fires that
+  for hidden warm-ups), and gives it up when the chat is archived in the app.
 - **`SessionState` colors are hardware values**, not a theme. The swatch in the settings
   window and the LED are the same number. Orange belongs to `awaiting` alone; `idle` must
   not be near-white (the pad's resting state is white).

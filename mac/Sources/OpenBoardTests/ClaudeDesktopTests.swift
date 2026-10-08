@@ -143,7 +143,69 @@ func runClaudeDesktopTests() {
         expect(focus.contains("components.scheme = \"claude\""))
         expect(focus.contains("components.path = \"/continue\""))
         // The app's own rule for the id; anything else it drops without a word.
-        expect(focus.contains(#"^local_[A-Za-z0-9-]{1,64}$"#))
+        expect(focus.contains("ClaudeDesktop.isHostSessionID(id)"))
+    }
+
+    // MARK: - archived chats
+
+    test("only the app's own id shape is a desktop session id") {
+        expect(ClaudeDesktop.isHostSessionID("local_266f2131-c29d-460f-92a1-326a2e74200f"))
+        expect(!ClaudeDesktop.isHostSessionID("8c1cc2ff-5c41-46b5-b4dd-edede3ee0b5e"))
+        expect(!ClaudeDesktop.isHostSessionID("local_../../etc"))
+        expect(!ClaudeDesktop.isHostSessionID(""))
+    }
+
+    /// A scratch `claude-code-sessions` with one record two directories down, as the
+    /// app writes it.
+    func sessionsRoot(record id: String, json: String) -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ob-desktop-\(UUID().uuidString)")
+        let org = root.appendingPathComponent("account").appendingPathComponent("org")
+        try? FileManager.default.createDirectory(at: org, withIntermediateDirectories: true)
+        try? json.write(to: org.appendingPathComponent("\(id).json"), atomically: true, encoding: .utf8)
+        return root
+    }
+
+    test("an archived desktop chat is seen as archived") {
+        let root = sessionsRoot(record: "local_a1", json: #"{"sessionId":"local_a1","isArchived":true}"#)
+        defer { try? FileManager.default.removeItem(at: root) }
+        expect(ClaudeDesktop.isArchived(hostSessionID: "local_a1", root: root))
+    }
+
+    test("a live desktop chat is not archived") {
+        let root = sessionsRoot(record: "local_a1", json: #"{"sessionId":"local_a1","isArchived":false}"#)
+        defer { try? FileManager.default.removeItem(at: root) }
+        expect(!ClaudeDesktop.isArchived(hostSessionID: "local_a1", root: root))
+    }
+
+    test("a chat with no readable record keeps its key") {
+        // Freeing a key on a guess is worse than holding it: missing, unreadable, and
+        // missing-the-field all say no.
+        let root = sessionsRoot(record: "local_a1", json: "not json")
+        defer { try? FileManager.default.removeItem(at: root) }
+        expect(!ClaudeDesktop.isArchived(hostSessionID: "local_a1", root: root))
+        expect(!ClaudeDesktop.isArchived(hostSessionID: "local_missing", root: root))
+        expect(!ClaudeDesktop.isArchived(hostSessionID: "local_a1", root: root.appendingPathComponent("nope")))
+
+        let bare = sessionsRoot(record: "local_b2", json: #"{"sessionId":"local_b2"}"#)
+        defer { try? FileManager.default.removeItem(at: bare) }
+        expect(!ClaudeDesktop.isArchived(hostSessionID: "local_b2", root: bare))
+    }
+
+    test("the board frees archived desktop chats on its resident loop") {
+        expect(controller.contains("await self.releaseArchivedDesktopSessions()"))
+    }
+
+    test("a desktop SessionStart alone does not take a key") {
+        // Warm-ups and chats clicked past fire it; the adoption path takes the first
+        // real event. The deferral must come before both claims.
+        guard let deferral = controller.range(of: #"if event.name == "SessionStart", event.entrypoint == "claude-desktop","#),
+              let adoption = controller.range(of: "if registry.adoptRealSessionID(")
+        else {
+            expect(false, "the desktop SessionStart deferral or the adoption path is gone")
+            return
+        }
+        expect(deferral.lowerBound < adoption.lowerBound)
     }
 
     test("a prompt in the desktop app is never answered from the pad") {

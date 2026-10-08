@@ -906,6 +906,22 @@ final class BoardController: ObservableObject {
         publish()
     }
 
+    /// Free the key of any desktop chat archived in the Claude app — it sends no
+    /// `SessionEnd` and its process lives on, so nothing else would. See `ClaudeDesktop`.
+    private func releaseArchivedDesktopSessions() async {
+        let archived = registry.entries.filter {
+            $0.claudeDesktopSession.map { ClaudeDesktop.isArchived(hostSessionID: $0) } ?? false
+        }
+        guard !archived.isEmpty else { return }
+        for entry in archived {
+            SessionTitle.forget(transcriptPath: entry.transcriptPath)
+            registry.release(sessionID: entry.sessionID)
+            Log.write("released slot \(entry.slot) (\(entry.sessionID.prefix(8))) — archived in the Claude app")
+        }
+        publish()
+        await paint()
+    }
+
     /**
      Whether this entry is the session in front of you.
 
@@ -1553,6 +1569,20 @@ final class BoardController: ObservableObject {
             }
         }
 
+        /*
+         A desktop chat takes its key at its first real event, not at `SessionStart`.
+
+         The Claude app starts a hidden warm-up session whenever you switch chats
+         (anthropics/claude-code#90798), and fires `SessionStart` for every old chat you
+         only click past. Keyed at start, the six keys fill with chats nobody is in. The
+         adoption below picks the session up from its first prompt or tool call instead.
+        */
+        if event.name == "SessionStart", event.entrypoint == "claude-desktop",
+           registry.entry(forSession: sessionID) == nil {
+            Log.write("hook SessionStart: deferred (claude-desktop takes a key at its first event)")
+            return
+        }
+
         if registry.adoptRealSessionID(
             sessionID,
             pid: hookPID,
@@ -1622,6 +1652,10 @@ final class BoardController: ObservableObject {
                     + "transcript=\(transcript.map { ($0 as NSString).lastPathComponent } ?? "none") "
                     + "cwd=\(event.cwd.map { ($0 as NSString).lastPathComponent } ?? "none")"
             )
+            // The adoption above publishes before this runs, and a desktop chat is always
+            // adopted, so without this its key cannot open the chat until something else
+            // happens to republish.
+            publish()
         }
 
         if event.name == "SessionStart" {
@@ -1830,6 +1864,7 @@ final class BoardController: ObservableObject {
 
                 await self.refreshTerminalTitles()
                 await self.refreshCmuxSurfaces()
+                await self.releaseArchivedDesktopSessions()
                 await self.publishDeviceStatus(present: present)
                 try? await Task.sleep(for: present ? self.presentInterval : self.absentInterval)
             }

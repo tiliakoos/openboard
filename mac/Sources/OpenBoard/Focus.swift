@@ -183,8 +183,7 @@ enum Focus {
      app forward rather than leaving the press with nothing to show for it.
      */
     private static func openClaudeDesktopSession(_ hostSessionID: String?) -> Outcome {
-        if let id = hostSessionID,
-           id.range(of: #"^local_[A-Za-z0-9-]{1,64}$"#, options: .regularExpression) != nil {
+        if let id = hostSessionID, ClaudeDesktop.isHostSessionID(id) {
             var components = URLComponents()
             components.scheme = "claude"
             components.host = "code"
