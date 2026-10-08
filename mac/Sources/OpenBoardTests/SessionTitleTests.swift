@@ -122,6 +122,44 @@ func runSessionTitleTests() {
         expectEqual(SessionTitle.name(inJSONL: jsonl)?.name, "Ship the installer")
     }
 
+    test("a chosen name beats the ai-title, and the latest rename wins") {
+        // The Claude desktop app writes only `custom-title` — its sidebar name — and
+        // `/rename` appends another, so the first one is the name that was replaced.
+        let jsonl = [
+            line(["type": "ai-title", "aiTitle": "Investigate event detection", "sessionId": "a"]),
+            line(["type": "custom-title", "customTitle": "Analyze run", "sessionId": "a"]),
+            line(["type": "user", "message": ["content": "what changed"]]),
+            line(["type": "custom-title", "customTitle": "Analyze run - 10/7", "sessionId": "a"]),
+        ].joined(separator: "\n")
+
+        expectEqual(SessionTitle.customTitle(inJSONL: jsonl), "Analyze run - 10/7")
+        let named = SessionTitle.name(inJSONL: jsonl)
+        expectEqual(named?.name, "Analyze run - 10/7")
+        // Not cached forever: it can be renamed again.
+        expect(named?.settled == false)
+    }
+
+    test("a blank chosen name falls through to the ai-title") {
+        let jsonl = [
+            line(["type": "custom-title", "customTitle": "  ", "sessionId": "a"]),
+            line(["type": "ai-title", "aiTitle": "The real title", "sessionId": "a"]),
+        ].joined(separator: "\n")
+        expectEqual(SessionTitle.name(inJSONL: jsonl)?.name, "The real title")
+    }
+
+    test("the desktop app's pasted text is not the name") {
+        // Its wrapper carries an attribute on both tags, which the plain-tag rule missed —
+        // a desktop row read `<pasted_content id="8903">`.
+        let pasted = "\n\n<pasted_content id=\"8903\">\n## Current Task\nBring every row\n</pasted_content id=\"8903\">\n"
+        expectEqual(SessionTitle.clean(pasted + "Fix the crowded headers"), "Fix the crowded headers")
+        expect(SessionTitle.clean(pasted) == nil, "only pasted text leaves nothing to name it by")
+        // An attribute on the opening tag alone still closes on the bare name.
+        expectEqual(SessionTitle.clean("<note kind=\"x\">body</note>Real request"), "Real request")
+        // Unclosed, or not a tag at all: left as written.
+        expectEqual(SessionTitle.clean("<pasted_content id=\"1\">\nno end"), "<pasted_content id=\"1\">")
+        expectEqual(SessionTitle.clean("< 3 this"), "< 3 this")
+    }
+
     test("an unnamed session falls back, and says the name is provisional") {
         // The flag is what stops the fallback being cached forever — a row would
         // otherwise keep the opening message for the life of the session.

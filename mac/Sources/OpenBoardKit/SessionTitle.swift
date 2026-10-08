@@ -11,7 +11,8 @@ import Foundation
  The name used is Claude Code's own: an `ai-title` entry, which is the same string the
  VS Code extension renames its tab to. So a row in the popover and a tab in the editor
  read alike, and mapping a key to a chat is a matter of recognising the words rather
- than counting windows.
+ than counting windows. A name someone *chose* — `custom-title`, from `/rename` or the
+ Claude desktop app's sidebar — beats it; see `customTitle`.
 
  An earlier version used the **first thing you asked for**, on the reasoning that
  Claude Code writes no title into a *live* transcript and `summary` lines only appear
@@ -76,6 +77,9 @@ public enum SessionTitle {
     /// What to call this session, and whether the answer is final. Exposed for the
     /// tests, which parse a fixture rather than a real file.
     public static func name(inJSONL text: String) -> (name: String, settled: Bool)? {
+        // A name someone chose beats the one Claude Code chose — but it can be chosen
+        // again, so it is never final.
+        if let title = customTitle(inJSONL: text) { return (title, false) }
         if let title = aiTitle(inJSONL: text) { return (title, true) }
         if let opening = firstUserMessage(inJSONL: text) { return (opening, false) }
         return nil
@@ -100,6 +104,28 @@ public enum SessionTitle {
             return title
         }
         return nil
+    }
+
+    /**
+     A name someone gave the session: `/rename`, or the Claude desktop app, which writes
+     its sidebar title here and never writes an `ai-title` at all — so without this every
+     desktop chat was named after its opening message.
+
+     The *last* occurrence in the head is taken, unlike `aiTitle`: a rename appends a new
+     line, and the first one is the name it replaced.
+     */
+    public static func customTitle(inJSONL text: String) -> String? {
+        var found: String?
+        for line in text.split(separator: "\n") where line.contains("custom-title") {
+            guard let data = line.data(using: .utf8),
+                  let entry = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  entry["type"] as? String == "custom-title",
+                  let raw = entry["customTitle"] as? String,
+                  let title = clean(raw)
+            else { continue }
+            found = title
+        }
+        return found
     }
 
     private static func fileSize(of path: String) -> Int {
@@ -162,11 +188,15 @@ public enum SessionTitle {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         while text.hasPrefix("<"),
               let openEnd = text.firstIndex(of: ">") {
-            let name = text[text.index(after: text.startIndex)..<openEnd]
+            let tag = text[text.index(after: text.startIndex)..<openEnd]
+            // The element's name, without attributes. The desktop app wraps pasted text as
+            // `<pasted_content id="8903">…</pasted_content id="8903">` — on both ends.
+            let name = tag.prefix { !$0.isWhitespace }
             // Only well-formed named elements; a message that merely starts with "<"
             // is left as written.
-            guard !name.isEmpty, !name.contains(" "), !name.hasPrefix("/") else { break }
-            guard let closeStart = text.range(of: "</\(name)>") else { break }
+            guard !name.isEmpty, !name.hasPrefix("/") else { break }
+            guard let closeStart = text.range(of: "</\(name)>") ?? text.range(of: "</\(tag)>")
+            else { break }
             text = String(text[closeStart.upperBound...])
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         }
