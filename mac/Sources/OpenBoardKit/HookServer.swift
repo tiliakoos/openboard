@@ -101,11 +101,12 @@ public actor HookServer {
         /// cannot tell a human session from a subagent.
         public var environment: [String: String] { envValue }
 
-        /// `type == "subagent"` ids from `background_tasks`, or empty if the array is
-        /// absent/empty. Used to reconcile the delegation counter on every `Stop`.
-        public var backgroundSubagentIDs: [String] {
+        /// Ids of every in-flight entry in `background_tasks` — shell, subagent, monitor,
+        /// workflow or any other kind — or empty if the array is absent/empty. Used to
+        /// reconcile the delegation set on every `Stop`. `session_crons` is deliberately
+        /// not read: a scheduled wake-up is not something running.
+        public var backgroundTaskIDs: [String] {
             (raw["background_tasks"] as? [[String: Any]] ?? [])
-                .filter { ($0["type"] as? String) == "subagent" }
                 .compactMap { $0["id"] as? String }
         }
     }

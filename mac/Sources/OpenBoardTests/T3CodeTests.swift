@@ -115,15 +115,16 @@ func runT3CodeTests() {
         expectEqual(try phase(["status": "running", "pendingRuntimeRequest": request("auth_refresh")]), .working)
     }
 
-    test("background work holds a completion, except a command left running") {
+    test("a completed run with background work still running is background, whatever the kind") {
         let tasks = { (kind: String) -> [String: Any] in
             ["status": "completed", "pendingBackgroundTasks": [["kind": kind, "taskId": "x"]]]
         }
-        expectEqual(try phase(tasks("command")), .done, "a dev server is not the agent working")
-        expectEqual(try phase(tasks("subagent")), .working)
-        expectEqual(try phase(tasks("monitor")), .working)
-        expectEqual(try phase(tasks("background_task")), .working)
-        expectEqual(try phase(tasks("unknown-kind")), .working, "unknown work holds, as T3's does")
+        // A command can be a CI watch the agent wakes for: nothing in the kind tells it
+        // from a dev server, so it is not done either.
+        for kind in ["command", "subagent", "monitor", "background_task", "unknown-kind"] {
+            expectEqual(try phase(tasks(kind)), .background, kind)
+        }
+        expectEqual(try phase(["status": "completed", "pendingBackgroundTasks": []]), .done)
     }
 
     // MARK: - eligibility
@@ -146,17 +147,18 @@ func runT3CodeTests() {
 
     // MARK: - the diff
 
-    test("the first snapshot claims only threads that are working or waiting on you") {
+    test("the first snapshot claims only threads that are working, waiting on you, or in the background") {
         var state = T3Code.State()
         let update = state.apply(try snapshot([
             thread("run", ["status": "running"]),
             thread("ask", ["status": "running", "pendingRuntimeRequest": ["id": "r1", "kind": "command"]]),
+            thread("ci", ["status": "completed", "pendingBackgroundTasks": [["kind": "command", "taskId": "x"]]]),
             thread("green", ["status": "completed"]),
             thread("red", ["status": "failed"]),
             thread("rest", ["status": "idle"]),
         ]), now: now)
-        expectEqual(events(update), ["run:t3_working", "ask:t3_awaiting"])
-        expectEqual(state.trackedCount, 2)
+        expectEqual(events(update), ["run:t3_working", "ask:t3_awaiting", "ci:t3_background"])
+        expectEqual(state.trackedCount, 3)
     }
 
     test("an unchanged thread says nothing") {
@@ -326,6 +328,7 @@ func runT3CodeTests() {
         expectEqual(EventMapper.state(for: "t3_working"), .working)
         expectEqual(EventMapper.state(for: "t3_awaiting"), .awaiting)
         expectEqual(EventMapper.state(for: "t3_done"), .done)
+        expectEqual(EventMapper.state(for: "t3_background"), .background)
         expectEqual(EventMapper.state(for: "t3_error"), .error)
         expectEqual(EventMapper.state(for: "t3_idle"), .idle)
         expectEqual(EventMapper.state(for: "t3_released"), .ended)

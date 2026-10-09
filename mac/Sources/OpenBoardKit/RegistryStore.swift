@@ -147,7 +147,7 @@ public struct RegistryStore: Sendable {
         case .working: return TurnState.isWorking(transcriptPath: transcriptPath) == true
             ? .working
             : .idle
-        case .done, .awaiting, .stalled, .error, .idle, .ended: return state
+        case .background, .done, .awaiting, .stalled, .error, .idle, .ended: return state
         }
     }
 

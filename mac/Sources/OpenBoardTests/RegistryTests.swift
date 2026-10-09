@@ -483,7 +483,7 @@ func runRegistryTests() {
         )
     }
 
-    test("the Stop override formula: done + delegating stays working, done + not delegating stays done") {
+    test("the Stop override formula: done + background work is background, done alone stays done") {
         // Pure-function replica of BoardController.handle's counter-gated override
         // (the `else` branch of its if/else if/else chain) — the live socket/hook
         // path is not reachable from this suite, but the formula itself, including
@@ -495,16 +495,16 @@ func runRegistryTests() {
         func applied(_ state: SessionState, sessionID: String) -> SessionState {
             (state == .done
                 && (registry.entry(forSession: sessionID)?.delegatingAgentIDs.count ?? 0) > 0)
-                ? .working : state
+                ? .background : state
         }
 
         // No agents in flight: a plain turn's Stop -> done, unchanged
         // (regression guard).
         expectEqual(applied(.done, sessionID: "a"), .done)
 
-        // Reconciled to 1 in-flight subagent: Stop -> working, not done.
+        // Reconciled to 1 in-flight task: Stop -> background, not done.
         _ = registry.reconcileDelegation(sessionID: "a", ids: ["agent-1"])
-        expectEqual(applied(.done, sessionID: "a"), .working)
+        expectEqual(applied(.done, sessionID: "a"), .background)
 
         // A state other than .done is never touched by the override, delegating or not.
         expectEqual(applied(.awaiting, sessionID: "a"), .awaiting)
@@ -518,7 +518,7 @@ func runRegistryTests() {
 
         // The formula alone is not the whole story: BoardController feeds `applied`
         // into `setState`, which is itself gated by `SessionState.mayReplace`. Prove
-        // `.working` is actually accepted over an entry sitting at `.done` — the exact
+        // `.background` is actually accepted over an entry sitting at `.done` — the exact
         // path a recovering delegating session takes — rather than
         // stopping one line short of the guard that could silently swallow it.
         _ = registry.setState(sessionID: "a", to: .done)
@@ -527,8 +527,8 @@ func runRegistryTests() {
         let override = applied(.done, sessionID: "a")
         _ = registry.setState(sessionID: "a", to: override)
         expectEqual(
-            registry.entry(forSession: "a")?.state, .working,
-            "mayReplace must not swallow the delegating override"
+            registry.entry(forSession: "a")?.state, .background,
+            "mayReplace must not swallow the background override"
         )
     }
 
@@ -805,8 +805,10 @@ func runPruneTests() {
  */
 func runDoneSurvivalTests() {
     test("idle does not overwrite done") {
-        // `done` already means idle, plus the thing you have not seen.
+        // `done` already means idle, plus the thing you have not seen. So does
+        // `background`, with work still running on top.
         expect(!SessionState.mayReplace(.done, with: .idle))
+        expect(!SessionState.mayReplace(.background, with: .idle))
         var registry = SessionRegistry()
         _ = registry.claim(sessionID: "s", pid: 1, state: .done, isAlive: { _ in true })
         registry.setState(sessionID: "s", to: .idle)
@@ -831,7 +833,7 @@ func runDoneSurvivalTests() {
     test("everything else still replaces done") {
         // Narrow on purpose: this must not become a general "green wins" rule, or a
         // session that fails or blocks after finishing would keep claiming it is fine.
-        for next: SessionState in [.working, .awaiting, .stalled, .error, .ended, .viewing] {
+        for next: SessionState in [.working, .background, .awaiting, .stalled, .error, .ended, .viewing] {
             expect(
                 SessionState.mayReplace(.done, with: next),
                 "\(next.rawValue) was blocked from replacing done"

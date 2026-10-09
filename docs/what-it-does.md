@@ -22,6 +22,7 @@ colour is that session's state.
 |---|---|---|
 | idle | dim blue | The session is open, nothing running |
 | working | blue, breathing | A turn is in progress |
+| background | purple | The turn finished, but something it started is still running |
 | **awaiting** | **amber, breathing** | **Blocked on a permission prompt — this one needs you** |
 | stalled | amber, shallow | Sitting at an idle prompt |
 | done | green | The turn finished, and you have not been back yet |

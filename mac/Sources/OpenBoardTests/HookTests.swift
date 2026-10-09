@@ -183,10 +183,9 @@ func runHookTests() {
         }
     }
 
-    test("backgroundSubagentIDs filters background_tasks to type == subagent") {
-        // By design, the Stop-time reconcile is subagent-only scope — a
-        // shell/monitor/workflow/teammate/cloud-session/MCP-task background entry
-        // must not count toward delegatingAgentIDs.
+    test("backgroundTaskIDs takes every background_tasks entry, whatever its type") {
+        // A CI watch is a shell task, and it is the case purple exists for: every kind
+        // the turn left running counts, not only subagents.
         let event = HookServer.Event(raw: [
             "hook_event_name": "Stop",
             "session_id": "s",
@@ -197,17 +196,19 @@ func runHookTests() {
                 ["id": "monitor-1", "type": "monitor"],
             ],
         ])
-        expectEqual(Set(event.backgroundSubagentIDs), Set(["agent-1", "agent-2"]))
+        expectEqual(
+            Set(event.backgroundTaskIDs), Set(["agent-1", "shell-1", "agent-2", "monitor-1"])
+        )
     }
 
-    test("backgroundSubagentIDs is empty when background_tasks is absent or empty") {
+    test("backgroundTaskIDs is empty when background_tasks is absent or empty") {
         let missing = HookServer.Event(raw: ["hook_event_name": "Stop", "session_id": "s"])
-        expect(missing.backgroundSubagentIDs.isEmpty)
+        expect(missing.backgroundTaskIDs.isEmpty)
 
         let empty = HookServer.Event(raw: [
             "hook_event_name": "Stop", "session_id": "s", "background_tasks": [],
         ])
-        expect(empty.backgroundSubagentIDs.isEmpty)
+        expect(empty.backgroundTaskIDs.isEmpty)
     }
 
     test("writing to a socket nobody is listening on fails quietly") {

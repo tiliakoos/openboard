@@ -417,6 +417,7 @@ extension Harness {
             ("t3_working", nil),
             ("t3_awaiting", nil),
             ("t3_done", nil),
+            ("t3_background", nil),
             ("t3_error", nil),
             ("t3_idle", nil),
             ("t3_released", nil),
@@ -444,7 +445,7 @@ extension Harness {
             "A question is never answered from the pad: approve and reject open it in T3 "
                 + "instead.",
             "A thread that had already finished when OpenBoard started stays off the board "
-                + "until it runs again.",
+                + "until it runs again, unless background work is still running.",
         ],
         setup: .token(mintCommand: T3Code.mintCommand)
     )
@@ -510,6 +511,8 @@ extension Harness {
                 + "in Cursor instead.",
             "Jumps use a Cursor link that is not in its documentation, so a Cursor update "
                 + "can stop them.",
+            "Cursor reports no background work, so a chat that leaves a command running "
+                + "turns green rather than purple.",
         ],
         // Its events are Claude Code's hooks, imported by Cursor: the wiring to check and
         // repair is that one.

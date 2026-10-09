@@ -431,6 +431,11 @@ struct HarnessPane: View {
                         notifications: board.notifications
                     ) {
                         StateChip(state: state)
+                        // A `Stop` with background work still running paints purple.
+                        if event.name == "Stop" {
+                            Text("or").font(.system(size: 11)).foregroundStyle(.tertiary)
+                            StateChip(state: .background)
+                        }
                     } else {
                         Text("depends on the subtype")
                             .font(.system(size: 11)).foregroundStyle(.tertiary)

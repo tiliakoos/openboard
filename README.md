@@ -56,6 +56,7 @@ or Claude painted it.
 |---|---|---|
 | idle | `#2E4A6B` dim | session started, nothing running |
 | working | `#0C47E9` breathing | turn in progress |
+| background | `#8A00FF` | turn finished, but work it started is still running — a CI watch, a dev server, a background agent |
 | **awaiting** | **`#FF6A00` breathing** | **blocked on a permission prompt — go here** |
 | stalled | `#FF6A00` shallow | waiting at an idle prompt |
 | done | `#09B821` | turn finished, and it holds until you go back |

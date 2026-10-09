@@ -1,9 +1,9 @@
 import Foundation
 
 /**
- The six-plus-two state vocabulary the whole product is built on.
+ The seven-plus-two state vocabulary the whole product is built on.
 
- Ported verbatim from `lib/config.cjs`. The colors are **hardware** colors: they
+ Ported from `lib/config.cjs`, plus `background`. The colors are **hardware** colors: they
  are what the LED is told to emit, not a theme. They must never be restyled to match
  a window's appearance — a swatch in the settings window and the key on the pad are
  the same value, and the moment they diverge the window is lying about the device.
@@ -20,6 +20,10 @@ public enum SessionState: String, CaseIterable, Sendable, Codable {
     case idle
     case viewing
     case working
+    /// The turn is over, but work it started is still running in the background — a
+    /// CI watch, a dev server, a monitor or a background subagent. Not `working`,
+    /// because the agent is not mid-turn; not `done`, because something is still going.
+    case background
     case awaiting
     case stalled
     case done
@@ -34,7 +38,7 @@ public enum SessionState: String, CaseIterable, Sendable, Codable {
     /// idle's color rather than holding one of its own — see `Viewing.appearance`. A
     /// control that edits a value nothing reads is worse than no control at all.
     public static let displayOrder: [SessionState] = [
-        .idle, .working, .awaiting, .stalled, .done, .error, .ended,
+        .idle, .working, .background, .awaiting, .stalled, .done, .error, .ended,
     ]
 
     public var label: String {
@@ -42,6 +46,7 @@ public enum SessionState: String, CaseIterable, Sendable, Codable {
         case .idle: "idle"
         case .viewing: "viewing"
         case .working: "working"
+        case .background: "background"
         case .awaiting: "awaiting"
         case .stalled: "stalled"
         case .done: "done"
@@ -54,7 +59,8 @@ public enum SessionState: String, CaseIterable, Sendable, Codable {
         switch self {
         case .idle: "Session open, nothing running."
         case .viewing: "Idle, and the chat you are looking at."
-        case .working: "A turn — or a delegated subagent — is running."
+        case .working: "A turn is running."
+        case .background: "Turn finished, background work still running."
         case .awaiting: "Blocked on a permission prompt."
         case .stalled: "An idle prompt fired."
         case .done: "Finished, and you have not been back yet."
@@ -68,7 +74,8 @@ public enum SessionState: String, CaseIterable, Sendable, Codable {
 
      Almost always yes. The exception is **`idle` must not overwrite `done`**, because
      `done` already means idle *and* carries something you have not seen yet — that a
-     turn finished while you were elsewhere.
+     turn finished while you were elsewhere. `background` is a finished turn too, with
+     work still running, so the same rule holds it.
 
      This is not hypothetical. Claude Code fires an `idle_prompt` notification about 60
      seconds after a turn ends, and a configuration that maps that to `idle` repaints
@@ -85,7 +92,7 @@ public enum SessionState: String, CaseIterable, Sendable, Codable {
      survives until you go back to it should not depend on a notification's wiring.
      */
     public static func mayReplace(_ current: SessionState, with next: SessionState) -> Bool {
-        guard next == .idle, current == .done else { return true }
+        guard next == .idle, current == .done || current == .background else { return true }
         return false
     }
 
@@ -199,6 +206,7 @@ extension SessionState {
         .idle: Appearance(color: RGB(0x2E4A6B), effect: .shallowBreath, brightness: 0.55, speed: 0.25),
         .viewing: Appearance(color: RGB(0x2E4A6B), effect: .shallowBreath, brightness: 0.85, speed: 0.25),
         .working: Appearance(color: RGB(0x0C47E9), effect: .shallowBreath, brightness: 0.75, speed: 0.45),
+        .background: Appearance(color: RGB(0x8A00FF), effect: .shallowBreath, brightness: 0.7, speed: 0.25),
         .awaiting: Appearance(color: RGB(0xFF6A00), effect: .shallowBreath, brightness: 0.95, speed: 0.75),
         .stalled: Appearance(color: RGB(0xFF6A00), effect: .shallowBreath, brightness: 0.5, speed: 0.3),
         .done: Appearance(color: RGB(0x09B821), effect: .shallowBreath, brightness: 0.7, speed: 0.25),

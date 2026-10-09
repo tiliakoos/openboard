@@ -81,9 +81,8 @@ public enum T3Code {
             public let kind: String
         }
 
-        public struct BackgroundTask: Decodable, Sendable {
-            public let kind: String
-        }
+        /// Only whether there are any is read: no kind tells a CI watch from a dev server.
+        public struct BackgroundTask: Decodable, Sendable {}
 
         public struct Lineage: Decodable, Sendable {
             public let relationshipToParent: String?
@@ -109,7 +108,7 @@ public enum T3Code {
     // MARK: - what a thread is doing
 
     public enum Phase: String, Sendable, Equatable {
-        case working, awaiting, done, error, idle
+        case working, awaiting, background, done, error, idle
 
         public var eventName: String { "t3_\(rawValue)" }
     }
@@ -133,10 +132,13 @@ public enum T3Code {
      Ported from T3's own `resolveThreadAwarenessPhaseV2` (`packages/shared/src/
      agentAwareness.ts`), first match wins.
 
-     Two deliberate differences. `queued` is working: T3's notifier ignores it, but its
+     Three deliberate differences. `queued` is working: T3's notifier ignores it, but its
      sidebar shows it as "Connecting", and a key that stays white while you wait for a
-     turn to start reads as broken. And `waiting` — the turn is over and checkpointing is
-     still running — is working, never orange: it waits on T3, not on you.
+     turn to start reads as broken. `waiting` — the turn is over and checkpointing is
+     still running — is working, never orange: it waits on T3, not on you. And a
+     completed run with background work still pending is `background`, whatever the
+     kind: T3 lets a command count as finished, but a command can be a CI watch the
+     agent will wake for, and nothing in the kind tells it from a dev server.
      */
     public static func phase(of thread: ThreadShell) -> Phase {
         if let request = thread.pendingRuntimeRequest, request.kind != "auth_refresh" {
@@ -146,10 +148,7 @@ public enum T3Code {
         case "preparing", "starting", "queued", "running", "waiting":
             return .working
         case "completed":
-            // A subagent or monitor wakes the agent again, so the run is not over; a
-            // dev server left running is. Unknown kinds hold, as T3's own rule does.
-            let holds = (thread.pendingBackgroundTasks ?? []).contains { $0.kind != "command" }
-            return holds ? .working : .done
+            return (thread.pendingBackgroundTasks ?? []).isEmpty ? .done : .background
         case "failed":
             return .error
         default:
@@ -253,8 +252,8 @@ public enum T3Code {
         /// sent message is detected against.
         var seen: [String: Seen] = [:]
         /// False until the first snapshot after a (re)start. That snapshot claims only
-        /// threads that are working or waiting on you: eighteen historical greens are a
-        /// history, not a board.
+        /// threads that are working, waiting on you, or still running something in the
+        /// background: eighteen historical greens are a history, not a board.
         var primed = false
         var lostAt: Date?
 
@@ -299,7 +298,8 @@ public enum T3Code {
                     emit = old.phase != phase || old.requestID != requestID
                 } else {
                     switch phase {
-                    case .working, .awaiting:
+                    // Background is still going, so it is live, not history.
+                    case .working, .awaiting, .background:
                         emit = true
                     case .done, .error:
                         // Only a whole run that started and ended between two polls —

@@ -35,7 +35,9 @@ public struct SessionRegistry: Sendable, Equatable {
         /// Enter but ignores Escape — so "reject" is not universally possible and
         /// the caller needs to know rather than send a key into the void.
         public var pendingTool: String?
-        /// `agent_id`s of in-flight background subagents for this session. A *set*,
+        /// Ids of this session's in-flight background work: subagents, tracked live by
+        /// `SubagentStart`/`SubagentStop`, and every kind in `background_tasks`, set on
+        /// each `Stop`. Non-empty at `Stop` paints `background`, not `done`. A *set*,
         /// not a bare count: a bare `Int` cannot distinguish "SubagentStop for an
         /// agent the last `Stop` reconcile already dropped" from "for one it still
         /// carries," which let a late-arriving `SubagentStop` decrement past a
@@ -642,6 +644,8 @@ public enum EventMapper {
             return .awaiting
         case "t3_done":
             return .done
+        case "t3_background":
+            return .background
         case "t3_error":
             return .error
         case "t3_idle":
@@ -686,9 +690,9 @@ public enum EventMapper {
      check), not a real user-idle signal — the same reason `defaultNotifications`
      deliberately omits it above. Left unmapped in a fresh config it is harmless, but a
      user who remaps it to *any* state (commonly `.idle`) turns that timer into a false
-     demotion: it fires well inside a delegating session's `.working` window and, since
-     `mayReplace` only guards `done -> idle`, repaints a delegating key straight to
-     slate with no warning.
+     demotion: it fires well inside a delegating session's `.background` window and,
+     since `mayReplace` guards only against `idle`, a remap to any other state repaints
+     the purple key with no warning.
 
      Keyed on the **subtype**, not the mapped state, because the remap is
      user-controlled — suppressing only when the mapped state happens to equal `.idle`
@@ -698,7 +702,7 @@ public enum EventMapper {
 
      Scoped to `idle_prompt` alone: `permission_prompt`/`agent_needs_input`/
      `elicitation_dialog` are real attention signals and must keep winning their orange
-     precedence over a delegating `.working`, delegating or not.
+     precedence over a delegating `.background`, delegating or not.
      */
     public static func suppressesDelegating(
         eventName: String,

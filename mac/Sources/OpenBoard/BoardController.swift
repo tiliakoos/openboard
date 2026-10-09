@@ -1468,7 +1468,7 @@ final class BoardController: ObservableObject {
          No `publish()`/`paint()` here: `SubagentStart` precedes the turn's own `Stop`
          by construction (spike-observed ordering), so there is no visible state change
          to paint at dispatch time — the effect surfaces the next time `Stop` reconciles
-         and (possibly) overrides `.done` to `.working`, which already repaints.
+         and (possibly) overrides `.done` to `.background`, which already repaints.
 
          `agentID` (from the same `agent_id` field Eligibility would have rejected on)
          is what turns `delegatingAgentIDs` into a set rather than a bare counter — see
@@ -1779,11 +1779,11 @@ final class BoardController: ObservableObject {
              `idle_prompt` false-demotion guard, ahead of the delegating override below.
 
              Claude Code fires a Notification with subtype `idle_prompt` on an idle
-             timer (~60s after a turn ends), independent of whether subagents are still
-             running. A config that maps `idle_prompt` to any state (commonly `.idle`)
-             would otherwise repaint a delegating `.working` key straight to slate —
-             `mayReplace` only guards `done -> idle`, not `working -> idle`. Skipped
-             entirely (no `setState`, no repaint) rather than re-applying `.working`,
+             timer (~60s after a turn ends), independent of whether background work is
+             still running. A config that maps `idle_prompt` to any state but `.idle` —
+             the one `mayReplace` already refuses — would otherwise repaint a purple
+             `.background` key. Skipped
+             entirely (no `setState`, no repaint) rather than re-applying `.background`,
              matching this function's own "a branch that declines says so on its own
              line, without touching the registry" precedent (`clearsAttention` above).
              */
@@ -1801,20 +1801,22 @@ final class BoardController: ObservableObject {
             }
 
             /*
-             Delegating-state override: a `Stop` that would paint `.done` paints
-             `.working` instead while background subagents are still in flight.
+             Background override: a `Stop` that would paint `.done` paints `.background`
+             instead while anything the turn started is still running — a shell, a
+             monitor, a background subagent, any kind in `background_tasks`. Not
+             `.working`: the agent is not mid-turn, and a dev server left running would
+             hold a key blue for hours. Not `.done`: something is still going.
 
-             `background_tasks` (filtered to `type == "subagent"` by
-             `backgroundSubagentIDs`) is authoritative and replaces the whole
-             `delegatingAgentIDs` set wholesale — never trusted as a running total
+             `background_tasks` (every entry, via `backgroundTaskIDs`) is authoritative
+             and replaces the whole `delegatingAgentIDs` set — never trusted as a running total
              across `Stop`s. This is a no-op for every event that does not map to
              `.done` — Claude Code's `Stop` is the case this override exists for, but
              other harnesses' `.done`-mapped events (Pi's `turn_end`/`agent_settled`,
              `SessionRegistry.swift`) and a `Notification` subtype remapped to `.done`
              (`HarnessPane`'s picker) reach the same override too — so a plain turn with
-             no subagents writes exactly the same `.done` it always has.
+             no background work writes exactly the same `.done` it always has.
 
-             No deferred-transition replay needed for the last agent landing: when the
+             No deferred-transition replay needed for the last task landing: when the
              final background subagent finishes, the CLI has been observed to inject a
              synthetic `UserPromptSubmit` (its prompt begins with `<task-notification>`)
              followed by a real `Stop` — not a documented contract, but consistent
@@ -1825,15 +1827,15 @@ final class BoardController: ObservableObject {
             if state == .done {
                 registry.reconcileDelegation(
                     sessionID: sessionID,
-                    ids: event.backgroundSubagentIDs
+                    ids: event.backgroundTaskIDs
                 )
             }
             let delegatedCount = registry.entry(forSession: sessionID)?.delegatingAgentIDs.count ?? 0
             let delegating = delegatedCount > 0
-            let applied = (state == .done && delegating) ? SessionState.working : state
+            let applied = (state == .done && delegating) ? SessionState.background : state
             if state == .done, delegating {
                 Log.write(
-                    "hook \(event.name) deferred to working (delegating, "
+                    "hook \(event.name) deferred to background ("
                         + "\(delegatedCount) in flight) [\(sessionID.prefix(8))]"
                 )
             }

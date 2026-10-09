@@ -28,7 +28,7 @@ func runAmbientTests() {
     }
 
     test("the priority order is exactly the one the board was designed around") {
-        expectEqual(Ambient.priority, [.awaiting, .error, .working, .done, .idle])
+        expectEqual(Ambient.priority, [.awaiting, .error, .working, .background, .done, .idle])
         // Attention outranks error: a failed turn has already happened, a blocked one
         // is still waiting on you.
         expectEqual(resolve([.error, .awaiting, nil, nil, nil, nil])?.state, .awaiting)

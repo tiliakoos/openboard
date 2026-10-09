@@ -12,7 +12,7 @@ import Foundation
  */
 public enum Ambient {
     /// Most urgent first. `stalled` folds into `awaiting` — both mean a human is needed.
-    public static let priority: [SessionState] = [.awaiting, .error, .working, .done, .idle]
+    public static let priority: [SessionState] = [.awaiting, .error, .working, .background, .done, .idle]
 
     /**
      Collapse the states that are distinct on a key but not on the ring.

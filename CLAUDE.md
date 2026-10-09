@@ -6,7 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A macOS menu-bar app that drives the six Agent-key LEDs (and the outer ring) on a Work
 Louder **Codex Micro** keypad from Claude Code sessions running on this Mac. One key per
-session: blue working, orange awaiting a permission prompt, green done, red error.
+session: blue working, orange awaiting a permission prompt, purple finished but still
+running background work, green done, red error.
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing anything structural — it is the
 record of *why* several things are the way they are, and most of it was paid for by a
