@@ -579,7 +579,7 @@ func runHarnessTests() {
         )
         expectEqual(
             Set(OpenBoardKit.Harness.all.map(\.id)),
-            ["claude-code", "t3code", "hermes", "pi"]
+            ["claude-code", "t3code", "cursor", "hermes", "pi"]
         )
     }
 
@@ -590,7 +590,12 @@ func runHarnessTests() {
         for harness in OpenBoardKit.Harness.all {
             switch harness.setup {
             case .automatic:
-                expectEqual(harness.id, "claude-code", "only Claude Code's file is JSON we merge")
+                // Cursor's events are Claude Code's hooks, imported by Cursor itself, so
+                // its wiring is that same file.
+                expect(
+                    ["claude-code", Cursor.harnessID].contains(harness.id),
+                    "only Claude Code's file is JSON we merge"
+                )
             case let .manual(path, snippet):
                 expect(!path.isEmpty, "\(harness.name) says paste it, but not where")
                 expect(

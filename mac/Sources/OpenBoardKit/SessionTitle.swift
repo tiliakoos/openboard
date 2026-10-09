@@ -298,6 +298,9 @@ public enum SessionOrigin: String, Sendable, Equatable {
     /// The Code tab of the Claude desktop app. Reached by its own `claude://` link,
     /// by the app's id for the session — see `Focus.openClaudeDesktopSession`.
     case claudeDesktop = "Claude"
+    /// A chat in Cursor's own Agents window, opened by Cursor's own link — see
+    /// `Focus.openCursorChat`.
+    case cursor = "Cursor"
     case cli = "CLI"
 
     /// Decided from the entrypoint, then from which application actually owns the
@@ -311,6 +314,7 @@ public enum SessionOrigin: String, Sendable, Equatable {
         if entrypoint == "claude-vscode" { return .vscode }
         if entrypoint == T3Code.entrypoint { return .t3code }
         if entrypoint == "claude-desktop" { return .claudeDesktop }
+        if entrypoint == Cursor.entrypoint { return .cursor }
         // A tty is not enough. VS Code's integrated terminal allocates a real pty, so
         // a session there is indistinguishable from a Terminal tab by entrypoint and
         // tty alone — which is why this used to label it "Terminal" and then fail to
@@ -352,10 +356,11 @@ public enum SessionTranscript {
         sessionID: String,
         root: URL? = nil
     ) -> String? {
-        // A discovered host has no real id yet, and a T3 thread has no transcript here;
-        // either way there is nothing to find.
+        // A discovered host has no real id yet, and a T3 thread or a Cursor chat has no
+        // transcript here; either way there is nothing to find.
         guard !sessionID.isEmpty, !Discovery.isPlaceholder(sessionID),
-              !sessionID.hasPrefix(T3Code.sessionPrefix)
+              !sessionID.hasPrefix(T3Code.sessionPrefix),
+              !sessionID.hasPrefix(Cursor.sessionPrefix)
         else { return nil }
 
         let projects = root ?? FileManager.default.homeDirectoryForCurrentUser

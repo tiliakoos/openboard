@@ -449,7 +449,74 @@ extension Harness {
         setup: .token(mintCommand: T3Code.mintCommand)
     )
 
+    /**
+     Cursor's own Agent chats.
+
+     Nothing of its own to wire: Cursor imports Claude Code's hooks, so the ones OpenBoard
+     already installs report every chat — see `Cursor` — and its setup *is* Claude Code's.
+     Opening a chat and knowing which one is on screen both go through Cursor itself: its
+     own link, and the selection its Agents window records.
+     */
+    public static let cursor = Harness(
+        id: Cursor.harnessID,
+        name: "Cursor",
+        isSupported: true,
+        settingsPath: nil,
+        entrypointVariable: nil,
+        entrypoints: [],
+        events: [
+            ("cursor_working", nil),
+            ("cursor_awaiting", nil),
+            ("cursor_done", nil),
+            ("cursor_error", nil),
+            ("cursor_idle", nil),
+            ("cursor_released", nil),
+        ],
+        surfaces: [
+            Surface(
+                id: "agents-window",
+                name: "Agents window",
+                detection: "Claude Code's hooks, which Cursor runs for its own chats, plus "
+                    + "each chat's name and pending state from Cursor's chat list.",
+                jump: "Opens that chat in the Agents window with Cursor's own link."
+            ),
+            Surface(
+                id: "editor-window",
+                name: "Editor windows",
+                detection: "The same hooks and chat list, so their chats light keys too.",
+                jump: "Opens the chat in the Agents window instead. Which chat an editor "
+                    + "window shows cannot be read, so it never counts as looked at."
+            ),
+            Surface(
+                id: "subagent",
+                name: "Subagents",
+                detection: "Cursor marks them in its chat list.",
+                jump: "—",
+                unsupported: "Never given a key, by design: one fan-out would take all six "
+                    + "at once."
+            ),
+            Surface(
+                id: "cloud",
+                name: "Cloud agents",
+                detection: "—",
+                jump: "—",
+                unsupported: "They run on Cursor's servers and report nothing to this Mac."
+            ),
+        ],
+        limitations: [
+            "Reports only while Claude Code's hooks are installed and Cursor's import of them "
+                + "is on.",
+            "A chat waiting on you is never answered from the pad: approve and reject open it "
+                + "in Cursor instead.",
+            "Jumps use a Cursor link that is not in its documentation, so a Cursor update "
+                + "can stop them.",
+        ],
+        // Its events are Claude Code's hooks, imported by Cursor: the wiring to check and
+        // repair is that one.
+        setup: .automatic
+    )
+
     /// Every harness the app knows about.
-    public static let all: [Harness] = [.claudeCode, .t3code, .hermes, .pi]
+    public static let all: [Harness] = [.claudeCode, .t3code, .cursor, .hermes, .pi]
 
 }

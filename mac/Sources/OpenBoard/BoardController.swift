@@ -79,6 +79,12 @@ final class BoardController: ObservableObject {
     private var t3Task: Task<Void, Never>?
     private var lastT3Log: String?
     private var t3UnknownStatuses: Set<String> = []
+    /// Cursor's own chats — see `Cursor`. Their hooks arrive on the socket; their names
+    /// and pending state are read from Cursor's chat list.
+    private var cursor = Cursor.State()
+    private var cursorTitles: [String: String] = [:]
+    private var cursorTask: Task<Void, Never>?
+    private var lastCursorLog: String?
     /// Sessions already found to belong to a muted surface, so the walk up the process
     /// tree is paid once per session rather than once per hook. Keyed by session id,
     /// not pid, because the OS reuses pids. Cleared whenever the setting changes,
@@ -466,6 +472,7 @@ final class BoardController: ObservableObject {
         startHookServer()
         startResident()
         startT3()
+        startCursor()
         reconnect()
     }
 
@@ -945,6 +952,8 @@ final class BoardController: ObservableObject {
             return WindowTitle.names(name, in: windowTitle)
         case let .t3code(threadID):
             return entry.sessionID == T3Code.sessionPrefix + threadID
+        case let .cursor(chatID):
+            return entry.sessionID == Cursor.sessionPrefix + chatID
         case .elsewhere:
             return false
         }
@@ -958,7 +967,8 @@ final class BoardController: ObservableObject {
     /// them; they arrive with the same spinner glyph in front and go through the same
     /// `TerminalTitle.clean`.
     private func name(of entry: SessionRegistry.Entry) -> String? {
-        t3Titles[entry.sessionID]
+        cursorTitles[entry.sessionID]
+            ?? t3Titles[entry.sessionID]
             ?? entry.tty.flatMap { terminalTitles[$0] }
             ?? entry.pid.flatMap { cmuxSurfaces[$0]?.title }.flatMap(TerminalTitle.clean)
             ?? SessionTitle.forSession(transcriptPath: entry.transcriptPath)
@@ -972,6 +982,7 @@ final class BoardController: ObservableObject {
         case let .cmux(surface): return "cmux \(surface)"
         case let .vscode(windowTitle): return "vscode “\(windowTitle.prefix(60))”"
         case let .t3code(threadID): return "t3 \(threadID.prefix(8))"
+        case let .cursor(chatID): return "cursor \(chatID.prefix(8))"
         case .elsewhere: return "elsewhere"
         }
     }
@@ -1320,6 +1331,63 @@ final class BoardController: ObservableObject {
         }
     }
 
+    /// Read Cursor's chat list for as long as the app runs — only ever for the chats on
+    /// the board, so with none there it costs nothing.
+    private func startCursor() {
+        cursorTask?.cancel()
+        cursorTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let delay = await self?.pollCursor() else { return }
+                try? await Task.sleep(for: delay)
+            }
+        }
+    }
+
+    /**
+     One read of the headers of the Cursor chats on the board, fed through `handle`:
+     archived and deleted chats free their keys, a chat waiting on you turns orange, and
+     every row takes the chat's own name.
+     */
+    private func pollCursor() async -> Duration {
+        let onBoard = registry.entries.compactMap { Cursor.chatID(fromSession: $0.sessionID) }
+        // Off the main actor: a read can wait up to 100 ms on a write in progress.
+        let headers = await Task.detached { Cursor.readHeaders(ids: onBoard) }.value
+        // Only when there was something to read: with no chats on the board nothing is opened.
+        if !onBoard.isEmpty {
+            lastCursorLog = Log.changed(
+                "cursor", last: lastCursorLog,
+                to: headers == nil ? "chat list unreadable — keys held as they are" : "chat list readable"
+            )
+        }
+        let update = cursor.apply(headers, onBoard: onBoard)
+        for emission in update.emissions {
+            await handle(HookServer.Event(raw: emission.payload))
+        }
+        if headers != nil, update.titles != cursorTitles {
+            cursorTitles = update.titles
+            publish()
+        }
+        return .milliseconds(1500)
+    }
+
+    /// One of Cursor's own hook events: translated, then handled like any other.
+    private func receiveCursor(_ raw: [String: Any]) async {
+        guard let emission = cursor.receive(raw) else {
+            if raw["hook_event_name"] as? String == "beforeSubmitPrompt" {
+                Log.write("hook beforeSubmitPrompt: refused (Cursor, not an agent chat)")
+            }
+            return
+        }
+        // Dictation ends when what it was dictating is sent.
+        if emission.claims, voiceIsActive {
+            setVoice(false, why: "prompt submitted (Cursor)")
+        }
+        // Only a prompt takes a key. A tool call or a stop in a chat that has none —
+        // a subagent's, or Cmd-K's — has nothing to update.
+        guard emission.claims || registry.entry(forSession: emission.sessionID) != nil else { return }
+        await handle(HookServer.Event(raw: emission.payload))
+    }
+
     /**
      Approve or reject the one orange T3 thread, through T3's API.
 
@@ -1368,6 +1436,15 @@ final class BoardController: ObservableObject {
     }
 
     private func handle(_ event: HookServer.Event) async {
+        // Cursor's own chats arrive through Claude Code's hooks with Cursor's payload,
+        // which the rules below would refuse for having no entrypoint. Translated first,
+        // they come back through here as `cursor_*` events — see `Cursor`.
+        let raw = event.raw
+        if Cursor.isHookPayload(raw) {
+            await receiveCursor(raw)
+            return
+        }
+
         /*
          Delegating-state carve-out, ahead of `Eligibility.evaluate`.
 

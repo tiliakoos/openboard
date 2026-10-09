@@ -32,6 +32,7 @@ runTranscriptLocateTests()
 runProcessAncestryTests()
 runRowDetailTests()
 runT3CodeTests()
+runCursorTests()
 
 // Hooks: the only way a session reaches the board.
 runHookTests()

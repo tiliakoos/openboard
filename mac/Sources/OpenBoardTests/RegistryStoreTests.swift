@@ -197,6 +197,27 @@ func runRegistryStoreTests() {
             "/tmp/ob/registry.json"
         )
     }
+
+    test("a Cursor chat keeps its key across a restart; a pid-less session still does not") {
+        // A Cursor chat has no process to check, and outlives any. Anything else without
+        // a pid is still a session nobody can vouch for.
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let now = Date()
+        var registry = SessionRegistry()
+        for (id, state) in [("cursor:00000000-0000-4000-8000-000000000001", SessionState.done), ("t3:abc", .done)] {
+            _ = registry.claim(
+                sessionID: id, cwd: "/repo", pid: nil, tty: nil,
+                entrypoint: id.hasPrefix("cursor:") ? Cursor.entrypoint : T3Code.entrypoint,
+                state: state, now: now, isAlive: { _ in true }
+            )
+        }
+        RegistryStore.save(registry, url: url)
+
+        let loaded = RegistryStore.load(url: url, now: now)
+        expectEqual(loaded.entries.map(\.sessionID), ["cursor:00000000-0000-4000-8000-000000000001"])
+        expectEqual(loaded.entries.first?.state, .done, "an unseen green survives a relaunch")
+    }
 }
 
 /**

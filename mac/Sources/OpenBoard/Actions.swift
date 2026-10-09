@@ -354,6 +354,11 @@ enum Actions {
         if target.origin == .claudeDesktop {
             return .focusFailed(slot: target.slot, reason: "the Claude app cannot confirm which chat is open")
         }
+        // Opened, never answered: a Cursor chat waits on a plan or a question, and both
+        // are yours to answer in Cursor.
+        if target.origin == .cursor {
+            return .focusFailed(slot: target.slot, reason: "answer Cursor chats in Cursor")
+        }
 
         guard confirmFrontmost(target) else {
             return .focusFailed(slot: target.slot, reason: "never became frontmost")
@@ -422,6 +427,7 @@ enum Actions {
      */
     private static func hasLanded(_ target: SlotView) -> Bool {
         if target.origin == .claudeDesktop { return false }
+        if target.origin == .cursor { return false }
 
         if target.origin == .cmux {
             /*

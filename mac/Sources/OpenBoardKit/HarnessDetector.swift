@@ -78,6 +78,10 @@ public enum HarnessDetector {
             homePaths: [".t3"], bundles: ["T3 Code (Nightly).app", "T3 Code (Alpha).app"]
         ),
         Agent(
+            id: "cursor", name: "Cursor", harnessID: Cursor.harnessID,
+            homePaths: [".cursor"], bundles: ["Cursor.app"]
+        ),
+        Agent(
             id: "hermes", name: "Hermes Agent", harnessID: "hermes",
             homePaths: [".hermes"], commands: ["hermes"]
         ),

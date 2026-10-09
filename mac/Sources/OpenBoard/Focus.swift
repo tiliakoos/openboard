@@ -84,6 +84,9 @@ enum Focus {
         if slot.origin == .t3code {
             return focusT3(slot)
         }
+        if slot.origin == .cursor {
+            return openCursorChat(slot.sessionID)
+        }
 
         if let tty = slot.surface, tty.hasPrefix("ttys") || tty.hasPrefix("/dev/") {
             let path = tty.hasPrefix("/dev/") ? tty : "/dev/\(tty)"
@@ -194,6 +197,31 @@ enum Focus {
             }
         }
         return activateClaudeDesktop()
+    }
+
+    /**
+     Open a Cursor chat in its Agents window, with Cursor's own link — see
+     `Cursor.openURL`.
+
+     A closed Agents window opens on the link and then drops it, measured: the chat is not
+     selected. So if the chat Cursor records as shown is still a different one a moment
+     later, and Cursor is still in front, the link goes once more.
+     */
+    private static func openCursorChat(_ sessionID: String?) -> Outcome {
+        guard let chat = sessionID.flatMap(Cursor.chatID(fromSession:)),
+              let url = Cursor.openURL(chatID: chat)
+        else { return .noWindow }
+        guard NSWorkspace.shared.open(url) else { return .failed("Cursor did not take its link") }
+        Task {
+            try? await Task.sleep(for: .milliseconds(2500))
+            let shown = await Task.detached { Cursor.readSelectedChat() }.value
+            guard shown != chat,
+                  NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Cursor.bundleID
+            else { return }
+            Log.write("jump: Cursor opened without the chat — sending its link again")
+            NSWorkspace.shared.open(url)
+        }
+        return .raised(method: "cursor-agent-link")
     }
 
     /// Bring the Claude desktop app forward, without opening anything. Only if it is

@@ -23,6 +23,8 @@ enum FocusedSurface: Equatable {
     case vscode(windowTitle: String)
     /// The thread T3 Code is showing, from its window's route. See `T3Window`.
     case t3code(threadID: String)
+    /// The chat Cursor's Agents window is showing, as Cursor records it. See `Cursor`.
+    case cursor(chatID: String)
     case elsewhere
 }
 
@@ -92,7 +94,9 @@ final class FocusWatcher {
     private static var readableFrontmost: String? {
         guard let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         else { return nil }
-        let readable = [terminalBundleID, Cmux.bundleID, VSCodeWindows.bundleID, T3Code.bundleID]
+        let readable = [
+            terminalBundleID, Cmux.bundleID, VSCodeWindows.bundleID, T3Code.bundleID, Cursor.bundleID,
+        ]
         return readable.contains(frontmost) ? frontmost : nil
     }
 
@@ -134,6 +138,11 @@ final class FocusWatcher {
         case T3Code.bundleID:
             guard let thread = await T3Window.focusedThreadID() else { return .elsewhere }
             return .t3code(threadID: thread)
+        case Cursor.bundleID:
+            // A database read, so off the main actor.
+            guard let chat = await Task.detached(operation: { Cursor.readSelectedChat() }).value
+            else { return .elsewhere }
+            return .cursor(chatID: chat)
         default:
             return .elsewhere
         }

@@ -388,10 +388,11 @@ struct HarnessPane: View {
             Circle()
                 .fill(hooks.isHealthy ? Color(RGB(0x09B821)) : Color(RGB(0xFF6A00)))
                 .frame(width: 8, height: 8)
+            // Claude Code's hooks, which are also the ones Cursor imports.
             Text(hooks.isHealthy
-                ? "All \(harness.events.count) wired to this build."
+                ? "All \(HookInstall.events.count) wired to this build."
                 : hooks.settingsExists
-                    ? "\(hooks.problems.count) of \(harness.events.count) need attention."
+                    ? "\(hooks.problems.count) of \(HookInstall.events.count) need attention."
                     : "No settings file found.")
                 .font(.system(size: 12))
             Spacer(minLength: 0)

@@ -648,6 +648,26 @@ public enum EventMapper {
             return .idle
         case "t3_released":
             return .ended
+
+        /*
+         Cursor.
+
+         Cursor's own hook names, translated by `Cursor` — its `stop` alone can mean done,
+         error or stopped-by-you — and its pending state read from its chat headers. Named
+         apart from Claude's for the same reason as T3's.
+        */
+        case "cursor_working":
+            return .working
+        case "cursor_awaiting":
+            return .awaiting
+        case "cursor_done":
+            return .done
+        case "cursor_error":
+            return .error
+        case "cursor_idle":
+            return .idle
+        case "cursor_released":
+            return .ended
         case "Notification":
             guard let matcher else { return nil }
             // Anything absent is not per-session status — agent_completed and

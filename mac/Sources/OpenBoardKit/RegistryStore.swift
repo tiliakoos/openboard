@@ -88,8 +88,10 @@ public struct RegistryStore: Sendable {
         var restored: [SessionRegistry.Entry] = []
         for stored in document.entries {
             guard let state = SessionState(rawValue: stored.state) else { continue }
-            // A pid that is gone means the session is gone, whatever the file says.
-            guard isAlive(stored.pid) else { continue }
+            // A pid that is gone means the session is gone, whatever the file says. A
+            // Cursor chat has no process of its own to check, and outlives any; the first
+            // read of its header frees the key if it was archived or deleted meanwhile.
+            guard isAlive(stored.pid) || stored.sessionID.hasPrefix(Cursor.sessionPrefix) else { continue }
             // Pids are reused. A live pid on a week-old entry is coincidence, not the
             // same session, and restoring it would put a stranger on your board.
             guard now.timeIntervalSince(stored.updatedAt) < staleInterval else { continue }

@@ -12,11 +12,41 @@
 // marks: a portrait has no single colour to take.
 //
 // Source: https://hermes-agent.nousresearch.com/favicon.ico
+// Cursor's: its own app icon (`Cursor.icns`), rendered at 36px with `sips`.
 
 import Foundation
 
 public enum ProviderRasters {
     public static let images: [String: String] = [
+        "cursor":
+            "iVBORw0KGgoAAAANSUhEUgAAACQAAAAkCAYAAADhAJiYAAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAA"
+            + "dTAAAOpgAAA6mAAAF3CculE8AAAAeGVYSWZNTQAqAAAACAAEARoABQAAAAEAAAA+ARsABQAAAAEAAABGASgAAwAAAAEAAgAAh2kA"
+            + "BAAAAAEAAABOAAAAAAAAAJAAAAABAAAAkAAAAAEAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAJKADAAQAAAABAAAAJAAAAAD4g1td"
+            + "AAAACXBIWXMAABYlAAAWJQFJUiTwAAABy2lUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9i"
+            + "ZTpuczptZXRhLyIgeDp4bXB0az0iWE1QIENvcmUgNi4wLjAiPgogICA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMu"
+            + "b3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPgogICAgICA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIgogICAgICAg"
+            + "ICAgICB4bWxuczpleGlmPSJodHRwOi8vbnMuYWRvYmUuY29tL2V4aWYvMS4wLyI+CiAgICAgICAgIDxleGlmOkNvbG9yU3BhY2U+"
+            + "MTwvZXhpZjpDb2xvclNwYWNlPgogICAgICAgICA8ZXhpZjpQaXhlbFhEaW1lbnNpb24+NTEyPC9leGlmOlBpeGVsWERpbWVuc2lv"
+            + "bj4KICAgICAgICAgPGV4aWY6UGl4ZWxZRGltZW5zaW9uPjUxMjwvZXhpZjpQaXhlbFlEaW1lbnNpb24+CiAgICAgIDwvcmRmOkRl"
+            + "c2NyaXB0aW9uPgogICA8L3JkZjpSREY+CjwveDp4bXBtZXRhPgoAheCYAAAFSUlEQVRYCe1XW2tcVRT+9kzm0sx9Jhda0+aiyUSo"
+            + "qRVjQQQftMVHLVppEAXxB4iIL4K+i4IPgoIPYt8EH2LTPqhI0CZGJaZJmqhpmkutuc416ZyZJHM5rrUnZ3oyOTNzanwpdMPm7LPP"
+            + "unz7W2uvvQ9wv91jDIhaeJub4SoUXB5VVWvKVrMlhFBtNmVzeRnpqnKVPjYFXD0E4U1APK1C9ZPcgQCRvgohEkLFYB74OB5PTRv5"
+            + "NnTSGHS/RCA+FwI+VTVS++9zZBNkM64K9fVYLP1NuaV9gJr8rhMFixgiNXe58P/8nlSFeDIWS/2pt2vRv/C4YMU7FG7TYAqFAkVC"
+            + "yM5js41U/ETV2+XyexgKBoNeC7b/IKEHygXL3zXnjY1NaGtvR+p2CsvL/2Bzc1OKMkgTbcHuVI7rE71Or6SqGT8t1Vctf2m3gcF4"
+            + "vV60dzyIpqZmWijN5VV0dDyEZDKB1dUVZDKZEnN6H2Vjfzbr8gJKaeftAVQmvO81n8/D4XSi9VgrWo4eg81mA88xQFUthisYDBFY"
+            + "HyKRddmz2Swsln2ZUbJdXk5MAWKHbLSl5SiFpwP19S4CkScwOTK8GxrejtQZIMsePnwEfn8Aa2uriMdjEoCZMNYExOGg3EK4+2G4"
+            + "3R7JRhGItkgqECTD1UGrEPwu2XQ40NrahlCogfJrCYqSkmHUNI2eNQGxUmdXGH19r6L3iVOos1qRIxbuuJfEFNnSEO16YkZ4KhaN"
+            + "4P333sX4+NjBAbHRXC6PgYF+ucpzL5+Xybzrs+ojl8tiYyOJkZ+v0O7bqAmGjZliSK6UwjA09CPGxkZx+vRzeP6FswgEgoaAOJFj"
+            + "0XUJIh6P4/KlAVNgTAPSvNrtDrCz/v6vMTIyjLNnX8Qzz56Ru41lOPkTiThisQiyOztw0o78/rtvEY1GKdGtmpmqT1MM6S0wWw6H"
+            + "k5xG8dmnn2Bw8Aec73sFnZ1dWF9bQTqdlmzY7XbMz80Rq1ck4O3tbb2ZiuPKBaKiSvGDlZLbxk7n53Dhyy9wY3YGW1tbcsszaGZr"
+            + "YOAizRULZA1zpc93zRBr8rZmQFytXS43dZec03KNgf726y+YnJwgduwlZ2YGdwWIgbBTrkc+nw91dXWSCZ7XGn/fJqaGh4elLFdw"
+            + "IczlD9swHTJ26nQeQjNdIUOhkASjB6IBYuampq7JvAl3d8Pt8RYLpw60Jmv0rMkQO7XTmcWHKCeqFhYjY3xkJJNJTExMyFzyEBgO"
+            + "Kd8Ars/8VQqrka42V5MhBrSwMI9UKiVZYUCVmiBAV6+O0RGhSOAsx2HlAsmHrZlWkyFeNZ9Dly9dRFc4jJ6eR+HxeORZpQ8Zh2p5"
+            + "aQkzMzMSBAPh6jw5MY7Z2esEKic3Qi1QNQGxAXbGp/s05cbNxUU80nMC4XC3DCEXSmaNt/no6Kj0xwfr9PQUpq5NSLZYn7uZZgoQ"
+            + "G2KnvOpMRqGzaQhzN2Zx8uRjxXsR5dYcFUFm8tatvylsvyMaiUgQrFOtkd07W5T96IUDgYDPKnb4CntEP280ZhYYZGtbO3p7T1ES"
+            + "CwI6LAHxTcDMUUHOFy025fjaGhTNxx5APNkQdH1Ffs6Z3KXy2sFnHOcTh89saMgHHX64EEkor2lg+Ll/l1nUD2i+dMfVCxuNrVbe"
+            + "RTmZ5GbBsB3Cf5ucf1huc1+mpdPZlXqn/aawqGcoJKbqPoeOu5m2K7ZJGm+sJ5TBcp2KVhoa6h9HQbxFCk9Rp1/pg/3bU7py8iYo"
+            + "a38SeXwUSSrj5WD4vSIgTZgTXYgtL1FcU1bTMXoSMwTo0AZd2Io/bkZC9+fuRQb+BakOKmPZKz+2AAAAAElFTkSuQmCC",
         "hermes":
             "iVBORw0KGgoAAAANSUhEUgAAACQAAAAkCAYAAADhAJiYAAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAA"
             + "dTAAAOpgAAA6mAAAF3CculE8AAAARGVYSWZNTQAqAAAACAABh2kABAAAAAEAAAAaAAAAAAADoAEAAwAAAAEAAQAAoAIABAAAAAEA"
