@@ -94,15 +94,16 @@ public enum Cursor {
 
     public struct Update: Sendable, Equatable {
         public var emissions: [Emission] = []
-        /// Chat names by session id, for every chat on the board that has one.
+        /// Chat names by session id, for every chat the board knows that has one.
         public var titles: [String: String] = [:]
     }
 
     /**
      What the board knows about Cursor's chats between two events.
 
-     Kept only for chats on the board — `apply` drops the rest — so a long day of Cmd-K
-     prompts, which fire the same events under ids of their own, cannot grow it.
+     Kept only for chats the board knows, on a key or waiting for one — `apply` drops the
+     rest — so a long day of Cmd-K prompts, which fire the same events under ids of their
+     own, cannot grow it.
      */
     public struct State: Sendable, Equatable {
         /// The phase last told to the board, per chat.
@@ -169,15 +170,15 @@ public enum Cursor {
         }
 
         /**
-         The headers of the chats on the board, as read just now.
+         The headers of the chats the board knows, on a key or waiting, as read just now.
 
          Nil means they could not be read, which changes nothing: an unreadable database
          is not every chat deleted. A rising pending flag is orange; a falling one goes
          back to what the chat was before it asked — a plan waiting after its turn ended
          has a green underneath, not blue — unless a hook has moved it on since.
          */
-        public mutating func apply(_ headers: [String: Header]?, onBoard: [String]) -> Update {
-            let board = Set(onBoard)
+        public mutating func apply(_ headers: [String: Header]?, known: [String]) -> Update {
+            let board = Set(known)
             phases = phases.filter { board.contains($0.key) }
             pending = pending.filter { board.contains($0.key) }
             beneath = beneath.filter { board.contains($0.key) }
@@ -185,7 +186,7 @@ public enum Cursor {
 
             var update = Update()
             guard let headers else { return update }
-            for id in onBoard.sorted() {
+            for id in known.sorted() {
                 guard let header = headers[id] else {
                     if seen.contains(id) { update.emissions.append(release(id)) }
                     continue
@@ -296,11 +297,64 @@ public enum Cursor {
     /// Swift strings are bridged to temporary C buffers, so SQLite must copy them.
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
+    /// A chat for the off-board list: recent, not archived, not a subagent, not a draft.
+    public struct Recent: Sendable, Equatable {
+        public let chatID: String
+        public let name: String?
+        public let cwd: String?
+        public let updatedAt: Date
+
+        public var sessionID: String { Cursor.sessionPrefix + chatID }
+    }
+
+    /**
+     Chats touched since `since`, newest first, read-only. Cursor has no "running" flag
+     outside its hooks, so recency is what makes a chat worth listing — the same small
+     table `readHeaders` asks, bounded to twenty rows. Nil when it could not be read.
+     */
+    public static func readRecent(since: Date, at url: URL = databaseURL) -> [Recent]? {
+        guard FileManager.default.fileExists(atPath: url.path), let db = openReadOnly(url) else {
+            return nil
+        }
+        defer { sqlite3_close(db) }
+        let sql = "SELECT composerId, lastUpdatedAt, value FROM composerHeaders "
+            + "WHERE isArchived = 0 AND isSubagent = 0 AND lastUpdatedAt > ? "
+            + "ORDER BY lastUpdatedAt DESC LIMIT 20"
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return nil }
+        sqlite3_bind_int64(statement, 1, Int64(since.timeIntervalSince1970 * 1000))
+
+        var recent: [Recent] = []
+        while true {
+            let step = sqlite3_step(statement)
+            if step == SQLITE_DONE { break }
+            guard step == SQLITE_ROW else { return nil }
+            guard let id = sqlite3_column_text(statement, 0).map({ String(cString: $0) }),
+                  isChatID(id)
+            else { continue }
+            let value = sqlite3_column_text(statement, 2).map { String(cString: $0) }
+            let json = value
+                .flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) } as? [String: Any] ?? [:]
+            // A draft was never sent, so there is nothing running to look at.
+            if json["isDraft"] as? Bool == true { continue }
+            let workspace = json["workspaceIdentifier"] as? [String: Any]
+            let uri = workspace?["uri"] as? [String: Any]
+            recent.append(Recent(
+                chatID: id,
+                name: (json["name"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+                cwd: uri?["fsPath"] as? String,
+                updatedAt: Date(timeIntervalSince1970: Double(sqlite3_column_int64(statement, 1)) / 1000)
+            ))
+        }
+        return recent
+    }
+
     /**
      The header rows of the given chats, read-only.
 
      The database is several gigabytes, so this asks the small `composerHeaders` table for
-     at most the six chats on the board and nothing else. Nil for anything that went
+     the chats the board knows and nothing else. Nil for anything that went
      wrong — a missing file, a changed schema, a lock — which callers must treat as
      "unknown", never as "deleted".
      */

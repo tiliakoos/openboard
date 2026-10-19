@@ -17,6 +17,9 @@ import SwiftUI
 @MainActor
 final class BoardModel: ObservableObject {
     @Published private(set) var slots: [SlotView] = SlotView.emptyBoard
+    /// Active sessions without a key, most urgent first: those waiting for one, then those
+    /// only seen listed. `slot` is 0 throughout.
+    @Published private(set) var offBoard: [SlotView] = []
     @Published private(set) var device: DeviceStatus = .unknown
     /// Attached by cable; that alone does not mean the battery is charging.
     @Published private(set) var isWired = false
@@ -140,6 +143,10 @@ final class BoardModel: ObservableObject {
     /// Replace the visible board. Called from the session store as hooks arrive.
     func apply(slots: [SlotView]) { self.slots = slots }
 
+    func apply(offBoard: [SlotView]) {
+        if self.offBoard != offBoard { self.offBoard = offBoard }
+    }
+
     func apply(device: DeviceStatus) { self.device = device }
 
     func apply(t3Status: T3Code.Status) {
@@ -218,6 +225,13 @@ struct SlotView: Identifiable, Equatable {
     /// Whether this is the session in front of you. Set by the controller, which is the
     /// only thing that knows what the focus watcher last reported.
     var isFocused: Bool = false
+    /// Put on this key by hand, so nothing automatic will take it.
+    var isPinned: Bool = false
+    /// Off the board: taken off by hand, and not put back by itself.
+    var isHeld: Bool = false
+    /// Off the board: only seen listed (a T3 thread, a desktop or Cursor chat), never
+    /// reported, so it is never put on a key by itself.
+    var isListed: Bool = false
 
     var swatch: Color {
         guard let appearance, appearance.effect != .off else { return Color.secondary.opacity(0.28) }

@@ -95,43 +95,43 @@ func runCursorTests() {
         var state = Cursor.State()
         _ = state.receive(hook("beforeSubmitPrompt", chat, ["composer_mode": "agent"]))
         // The first read is a baseline: a flag left behind by an old turn is not a question.
-        expect(state.apply([chat: header(pending: true)], onBoard: [chat]).emissions.isEmpty)
+        expect(state.apply([chat: header(pending: true)], known: [chat]).emissions.isEmpty)
 
         var fresh = Cursor.State()
-        expect(fresh.apply([chat: header()], onBoard: [chat]).emissions.isEmpty)
-        expectEqual(fresh.apply([chat: header(pending: true)], onBoard: [chat]).emissions.map(\.event), ["cursor_awaiting"])
-        expectEqual(fresh.apply([chat: header()], onBoard: [chat]).emissions.map(\.event), ["cursor_working"])
+        expect(fresh.apply([chat: header()], known: [chat]).emissions.isEmpty)
+        expectEqual(fresh.apply([chat: header(pending: true)], known: [chat]).emissions.map(\.event), ["cursor_awaiting"])
+        expectEqual(fresh.apply([chat: header()], known: [chat]).emissions.map(\.event), ["cursor_working"])
     }
 
     test("a plan dismissed after its turn ended goes back to green, not blue") {
         var state = Cursor.State()
-        _ = state.apply([chat: header()], onBoard: [chat])
+        _ = state.apply([chat: header()], known: [chat])
         _ = state.receive(hook("stop", chat, ["status": "completed"]))
-        expectEqual(state.apply([chat: header(pending: true)], onBoard: [chat]).emissions.map(\.event), ["cursor_awaiting"])
-        expectEqual(state.apply([chat: header()], onBoard: [chat]).emissions.map(\.event), ["cursor_done"])
+        expectEqual(state.apply([chat: header(pending: true)], known: [chat]).emissions.map(\.event), ["cursor_awaiting"])
+        expectEqual(state.apply([chat: header()], known: [chat]).emissions.map(\.event), ["cursor_done"])
 
         // Built instead: the new turn's prompt moved it on, so the flag falling is no news.
-        _ = state.apply([chat: header(pending: true)], onBoard: [chat])
+        _ = state.apply([chat: header(pending: true)], known: [chat])
         _ = state.receive(hook("beforeSubmitPrompt", chat, ["composer_mode": "agent"]))
-        expectEqual(state.apply([chat: header()], onBoard: [chat]).emissions.map(\.event), [])
+        expectEqual(state.apply([chat: header()], known: [chat]).emissions.map(\.event), [])
     }
 
     test("archived, deleted and subagent chats are released; an unreadable list releases nothing") {
         var state = Cursor.State()
-        let names = state.apply([chat: header(), other: header()], onBoard: [chat, other])
+        let names = state.apply([chat: header(), other: header()], known: [chat, other])
         expectEqual(names.titles["cursor:\(chat)"], "Fix the build")
 
         // Unreadable: every key stays where it is.
-        expect(state.apply(nil, onBoard: [chat, other]).emissions.isEmpty)
+        expect(state.apply(nil, known: [chat, other]).emissions.isEmpty)
 
-        let gone = state.apply([chat: header(archived: true)], onBoard: [chat, other])
+        let gone = state.apply([chat: header(archived: true)], known: [chat, other])
         expectEqual(Set(gone.emissions.map(\.chatID)), [chat, other], "archived, and deleted after being seen")
         expect(gone.emissions.allSatisfy { $0.event == Cursor.releasedEvent })
 
         var young = Cursor.State()
         // A brand-new chat may not have a row yet; that is not a deletion.
-        expect(young.apply([:], onBoard: [chat]).emissions.isEmpty)
-        expectEqual(young.apply([chat: header(subagent: true)], onBoard: [chat]).emissions.map(\.event), [Cursor.releasedEvent])
+        expect(young.apply([:], known: [chat]).emissions.isEmpty)
+        expectEqual(young.apply([chat: header(subagent: true)], known: [chat]).emissions.map(\.event), [Cursor.releasedEvent])
     }
 
     test("headers are read from Cursor's database, and a missing one is unknown") {

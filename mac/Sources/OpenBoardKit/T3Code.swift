@@ -103,6 +103,11 @@ public enum T3Code {
         public let latestRunId: String?
         public let latestUserAuthoredMessageAt: String?
         public let worktreePath: String?
+        /// Only orders the off-board list, so a value that does not parse costs nothing.
+        public let updatedAt: String?
+        /// When the latest run finished: what "done for less than half an hour" counts
+        /// from. `updatedAt` moves for reasons that are not the thread finishing.
+        public let latestRunCompletedAt: String?
     }
 
     // MARK: - what a thread is doing
@@ -230,6 +235,22 @@ public enum T3Code {
         /// A message was sent in some thread since the last snapshot. Ends dictation, as
         /// `UserPromptSubmit` does for a terminal session.
         public var promptSubmitted = false
+        /// Every thread that may hold a key, tracked or not, for the off-board list.
+        public var listed: [Listing] = []
+    }
+
+    /// An eligible thread as the off-board list shows it — including the finished ones
+    /// the first snapshot leaves off the board.
+    public struct Listing: Sendable, Equatable {
+        public let threadID: String
+        public let title: String?
+        public let project: String?
+        public let cwd: String?
+        public let phase: Phase
+        public let updatedAt: Date?
+        public let finishedAt: Date?
+
+        public var sessionID: String { T3Code.sessionPrefix + threadID }
     }
 
     /**
@@ -251,6 +272,9 @@ public enum T3Code {
         }
 
         var tracked: [String: Tracked] = [:]
+        /// Every eligible thread's phase as of the last snapshot, so one put on a key by
+        /// hand can start being tracked from where it actually is.
+        var current: [String: Tracked] = [:]
         /// Every thread in the last snapshot, eligible or not — the baseline a run or a
         /// sent message is detected against.
         var seen: [String: Seen] = [:]
@@ -263,11 +287,27 @@ public enum T3Code {
         public init() {}
 
         public var trackedCount: Int { tracked.count }
+        /// False before the first snapshot, and again once the server has been given up
+        /// on (`reset`) — when nothing listed from it is still true.
+        public var isPrimed: Bool { primed }
 
         /// The request an orange thread is showing, as of the last snapshot. Nil once it
         /// has been answered — in T3 or anywhere else.
         public func pendingRequestID(forSession sessionID: String) -> String? {
             T3Code.threadID(fromSession: sessionID).flatMap { tracked[$0]?.requestID }
+        }
+
+        /**
+         Start tracking a thread put on a key by hand, from its phase in the last
+         snapshot — so its next change is told to the board, and settling it frees the
+         key. Nil if it was not eligible then.
+         */
+        public mutating func track(sessionID: String) -> Phase? {
+            guard let id = T3Code.threadID(fromSession: sessionID), let now = current[id] else {
+                return nil
+            }
+            if tracked[id] == nil { tracked[id] = now }
+            return tracked[id]?.phase
         }
 
         public mutating func apply(_ snapshot: ShellSnapshot, now: Date) -> Update {
@@ -278,6 +318,7 @@ public enum T3Code {
             )
             var update = Update()
             var eligible = Set<String>()
+            current = [:]
 
             for thread in snapshot.threads {
                 let previous = seen[thread.id]
@@ -295,6 +336,17 @@ public enum T3Code {
 
                 let phase = T3Code.phase(of: thread)
                 let requestID = phase == .awaiting ? thread.pendingRuntimeRequest?.id : nil
+                let cwd = thread.worktreePath ?? thread.projectId.flatMap { projects[$0]?.workspaceRoot }
+                current[thread.id] = Tracked(phase: phase, requestID: requestID)
+                update.listed.append(Listing(
+                    threadID: thread.id,
+                    title: thread.title.flatMap { $0.isEmpty ? nil : $0 },
+                    project: thread.projectId.flatMap { projects[$0]?.title },
+                    cwd: cwd,
+                    phase: phase,
+                    updatedAt: thread.updatedAt.flatMap(T3Code.date(from:)),
+                    finishedAt: thread.latestRunCompletedAt.flatMap(T3Code.date(from:))
+                ))
                 let emit: Bool
                 if let old = tracked[thread.id] {
                     // A second request on a thread already orange is a different prompt.
@@ -319,7 +371,7 @@ public enum T3Code {
                 update.emissions.append(Emission(
                     threadID: thread.id,
                     event: phase.eventName,
-                    cwd: thread.worktreePath ?? thread.projectId.flatMap { projects[$0]?.workspaceRoot },
+                    cwd: cwd,
                     requestKind: phase == .awaiting ? thread.pendingRuntimeRequest?.kind : nil
                 ))
             }

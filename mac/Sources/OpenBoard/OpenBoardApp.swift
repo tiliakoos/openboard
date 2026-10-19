@@ -94,10 +94,18 @@ struct BoardCommands: Sendable {
     var saveCalibration: @MainActor ([Int]) -> Bool = { _ in false }
     /// Fun mode. Calling it while it runs cancels it.
     var playCountdown: @MainActor () -> Void = {}
-    /// Free one key. The session keeps running — this forgets it, it does not stop it.
+    /// Take the session on a key off the board. It keeps running and stays listed off
+    /// the board, and is not put back by itself until it asks for attention.
     var release: @MainActor (Int) -> Void = { _ in }
     /// Move the session on a key up (-1) or down (+1) one key, swapping with what is there.
     var move: @MainActor (Int, Int) -> Void = { _, _ in }
+    /// Put a session from the off-board list on a key, pinned. Whatever held the key
+    /// goes off the board.
+    var assign: @MainActor (String, Int) -> Void = { _, _ in }
+    /// Bring up a session from the off-board list.
+    var jumpToSession: @MainActor (String) -> Void = { _ in }
+    /// Hide a session from the off-board list until it starts a new turn or asks for you.
+    var dismiss: @MainActor (String) -> Void = { _ in }
     /// Open the settings window, or bring it forward.
     var openSettings: @MainActor () -> Void = {}
     /// Open guided setup. Separate from openSettings because the popover offers it
@@ -232,6 +240,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         playCountdown: { [weak self] in self?.controller?.playCountdown() },
         release: { [weak self] slot in self?.controller?.release(slot: slot) },
         move: { [weak self] slot, delta in self?.controller?.move(slot: slot, by: delta) },
+        assign: { [weak self] session, slot in self?.controller?.assign(sessionID: session, toSlot: slot) },
+        jumpToSession: { [weak self] session in self?.controller?.jump(toSession: session) },
+        dismiss: { [weak self] session in self?.controller?.dismiss(sessionID: session) },
         openSettings: { [weak self] in self?.showMainWindow() },
         openSetup: { [weak self] in self?.showSetup() },
         dismissMenu: { [weak self] in self?.controller?.dismissMenuBarPopover() },

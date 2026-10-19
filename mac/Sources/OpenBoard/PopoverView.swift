@@ -5,8 +5,9 @@ import SwiftUI
  The menu bar popover.
 
  Section order is the design's, and it is an order of urgency: what the pad is doing,
- then anything blocked on you, then the six sessions, then the action keys, then the
- commands. 376pt wide and internally scrollable so a long chat title never widens it.
+ then anything blocked on you, then the six sessions, then the sessions without a key,
+ then the action keys, then the commands. 376pt wide; a long chat title truncates rather
+ than widening it, and only the off-board list scrolls.
 
  When the pad is unusable a banner says so above the sessions, which stay. The list
  used to be replaced entirely on the grounds that a board you cannot trust is worse
@@ -66,6 +67,10 @@ struct PopoverView: View {
                     }
                     if !board.blocked.isEmpty { blockedRow }
                     sessions
+                    if !board.offBoard.isEmpty {
+                        Divider().opacity(0.6)
+                        offBoardSessions
+                    }
                     Divider().opacity(0.6)
                     actionKeys
                 }
@@ -238,6 +243,44 @@ struct PopoverView: View {
                     moveDown: { commands.move(slot.slot, 1) }
                 )
             }
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
+    }
+
+    // MARK: off the board
+
+    /// The agent keys a session can be put on — every one not bound to an action.
+    private var agentKeys: [SlotView] { board.slots.filter { board.actions[$0.key] == nil } }
+
+    /**
+     Every active session without a key, across every harness: running, asking for you,
+     or finished in the last half hour (`SessionRegistry.isWorthListing`) — those waiting
+     for a key, and those only seen listed. Put one on a key from here, and whatever held
+     the key comes off; or dismiss it until its next turn.
+
+     The one ScrollView in this window, and given an explicit height for exactly the reason
+     the rest of it has none: proposed no height inside a MenuBarExtra window, it collapses
+     to nothing. Four rows show; more scroll.
+     */
+    private var offBoardSessions: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionLabel("Not on a key · \(board.offBoard.count)")
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(board.offBoard, id: \.sessionID) { session in
+                        OffBoardRow(
+                            session: session,
+                            keys: agentKeys,
+                            jump: { session.sessionID.map(commands.jumpToSession) },
+                            assign: { slot in session.sessionID.map { commands.assign($0, slot) } },
+                            dismiss: { session.sessionID.map(commands.dismiss) }
+                        )
+                    }
+                }
+            }
+            .frame(height: CGFloat(min(board.offBoard.count, 4)) * OffBoardRow.height)
         }
         .padding(.horizontal, 8)
         .padding(.top, 8)
@@ -434,8 +477,13 @@ struct SessionRow: View {
                         control("chevron.down", action: moveDown,
                                 help: "Move this session down one key. Whatever is on that key swaps places.")
                     }
-                    control("xmark.circle.fill", action: release,
-                            help: "Stop tracking this session and free its key. The session keeps running.")
+                    control("xmark.circle.fill", action: {
+                        // The next session slides up into this row, under the pointer: hide
+                        // the controls so a second click cannot take that one off too.
+                        hovering = false
+                        release()
+                    }, help: "Take this session off the board. It keeps running and stays listed below, "
+                        + "and comes back when you put it back or it asks for you.")
                 }
                 .padding(.trailing, 3)
             }
@@ -475,11 +523,20 @@ struct SessionRow: View {
                 .frame(width: 9, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(slot.title ?? (slot.isOccupied ? "Untitled chat" : "Free"))
-                    .font(.system(size: 12.5, weight: .medium))
-                    .foregroundStyle(slot.isOccupied ? .primary : .tertiary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                HStack(spacing: 4) {
+                    Text(slot.title ?? (slot.isOccupied ? "Untitled chat" : "Free"))
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(slot.isOccupied ? .primary : .tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    if slot.isPinned {
+                        Image(systemName: "pin.fill")
+                            .font(.system(size: 8.5))
+                            .foregroundStyle(.tertiary)
+                            .help("Put on the board by hand — nothing automatic will take its key. "
+                                + "Like every key, it moves up when an earlier one frees.")
+                    }
+                }
 
                 if slot.isOccupied {
                     HStack(spacing: 5) {
@@ -505,6 +562,117 @@ struct SessionRow: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
+        .contentShape(.rect)
+    }
+}
+
+/**
+ A session without a key.
+
+ The same two lines as a key's row, without the key number. On hover the state badge gives
+ way to a menu of the keys to put it on, each naming what it would replace — the same
+ "replace rather than reflow" rule as the key rows.
+ */
+struct OffBoardRow: View {
+    let session: SlotView
+    let keys: [SlotView]
+    var jump: () -> Void = {}
+    var assign: (Int) -> Void = { _ in }
+    var dismiss: () -> Void = {}
+    @State private var hovering = false
+
+    /// Fixed, because the list's ScrollView is sized from it — see `offBoardSessions`.
+    static let height: CGFloat = 44
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            Button(action: jump) { rowContent }
+                .buttonStyle(HoverRowStyle())
+                .help(session.path ?? "")
+
+            // Hidden rather than removed: opening the menu moves the pointer off the row,
+            // and removing its button then would pull the menu out from under the click.
+            HStack(spacing: 0) {
+                Menu {
+                    if let free = keys.first(where: { !$0.isOccupied }) {
+                        Button("Key \(free.slot) (free)") { assign(free.slot) }
+                    }
+                    ForEach(keys.filter(\.isOccupied)) { key in
+                        Button("Key \(key.slot) · replace \(key.title ?? "Untitled chat")") {
+                            assign(key.slot)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .padding(.horizontal, 5)
+                .help("Put this session on a key. Whatever is on that key comes off the board.")
+
+                Button {
+                    // The next row slides up under the pointer, as on the key rows.
+                    hovering = false
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 7)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .help("Dismiss from this list until it starts a new turn or asks for you.")
+            }
+            .padding(.trailing, 3)
+            .opacity(hovering ? 1 : 0)
+            .allowsHitTesting(hovering)
+        }
+        .frame(height: Self.height)
+        .onHover { hovering = $0 }
+    }
+
+    private var rowContent: some View {
+        HStack(spacing: 9) {
+            Circle()
+                .fill(session.swatch)
+                .frame(width: 9, height: 9)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(session.title ?? "Untitled chat")
+                    .font(.system(size: 12.5, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                HStack(spacing: 5) {
+                    if let origin = session.origin { OriginBadge(origin: origin) }
+                    if let detail = session.detail {
+                        detail
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    if session.isHeld {
+                        Text("taken off")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                            .help("Taken off by hand. Stays off until you put it back or it asks for you.")
+                    }
+                }
+            }
+
+            Spacer(minLength: 6)
+
+            if let state = session.state {
+                StateBadge(state: state).opacity(hovering ? 0 : 1)
+            }
+        }
+        .padding(.horizontal, 8)
+        .frame(height: Self.height)
         .contentShape(.rect)
     }
 }

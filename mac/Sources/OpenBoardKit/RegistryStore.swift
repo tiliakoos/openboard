@@ -41,6 +41,9 @@ public struct RegistryStore: Sendable {
         var version: Int
         var cursor: Int
         var entries: [StoredEntry]
+        /// Sessions waiting off the board. Optional, so a registry written before it
+        /// existed still decodes.
+        var waiting: [StoredEntry]?
     }
 
     private struct StoredEntry: Codable {
@@ -58,6 +61,10 @@ public struct RegistryStore: Sendable {
         var claimSeq: Int
         var claimedAt: Date
         var updatedAt: Date
+        /// Written only when set, so an ordinary entry looks as it always did.
+        var pinned: Bool?
+        var held: Bool?
+        var dismissed: Bool?
     }
 
     // MARK: - reading
@@ -85,18 +92,17 @@ public struct RegistryStore: Sendable {
             return registry
         }
 
-        var restored: [SessionRegistry.Entry] = []
-        for stored in document.entries {
-            guard let state = SessionState(rawValue: stored.state) else { continue }
+        func restore(_ stored: StoredEntry) -> SessionRegistry.Entry? {
+            guard let state = SessionState(rawValue: stored.state) else { return nil }
             // A pid that is gone means the session is gone, whatever the file says. A
             // Cursor chat has no process of its own to check, and outlives any; the first
             // read of its header frees the key if it was archived or deleted meanwhile.
-            guard isAlive(stored.pid) || stored.sessionID.hasPrefix(Cursor.sessionPrefix) else { continue }
+            guard isAlive(stored.pid) || stored.sessionID.hasPrefix(Cursor.sessionPrefix) else { return nil }
             // Pids are reused. A live pid on a week-old entry is coincidence, not the
             // same session, and restoring it would put a stranger on your board.
-            guard now.timeIntervalSince(stored.updatedAt) < staleInterval else { continue }
+            guard now.timeIntervalSince(stored.updatedAt) < staleInterval else { return nil }
 
-            restored.append(SessionRegistry.Entry(
+            var entry = SessionRegistry.Entry(
                 slot: stored.slot,
                 sessionID: stored.sessionID,
                 cwd: stored.cwd,
@@ -111,10 +117,20 @@ public struct RegistryStore: Sendable {
                 claimSeq: stored.claimSeq,
                 claimedAt: stored.claimedAt,
                 updatedAt: stored.updatedAt
-            ))
+            )
+            entry.pinned = stored.pinned ?? false
+            entry.held = stored.held ?? false
+            entry.dismissed = stored.dismissed ?? false
+            return entry
         }
 
+        let restored = document.entries.compactMap(restore)
         registry.entries = restored
+        registry.waiting = (document.waiting ?? []).compactMap(restore).map {
+            var entry = $0
+            entry.slot = 0
+            return entry
+        }
         registry.restoreCursor(max(document.cursor, restored.map(\.claimSeq).max() ?? 0))
         return registry
     }
@@ -157,26 +173,31 @@ public struct RegistryStore: Sendable {
     /// one relearned board, and there is nothing useful to do about a failed write.
     public static func save(_ registry: SessionRegistry, url target: URL? = nil) {
         let destination = target ?? url()
+        let store = { (entry: SessionRegistry.Entry) in
+            StoredEntry(
+                slot: entry.slot,
+                sessionID: entry.sessionID,
+                cwd: entry.cwd,
+                pid: entry.pid,
+                tty: entry.tty,
+                transcriptPath: entry.transcriptPath,
+                entrypoint: entry.entrypoint,
+                host: entry.host == .unknown ? nil : entry.host.rawValue,
+                claudeDesktopSession: entry.claudeDesktopSession,
+                state: entry.state.rawValue,
+                claimSeq: entry.claimSeq,
+                claimedAt: entry.claimedAt,
+                updatedAt: entry.updatedAt,
+                pinned: entry.pinned ? true : nil,
+                held: entry.held ? true : nil,
+                dismissed: entry.dismissed ? true : nil
+            )
+        }
         let document = Document(
             version: 1,
             cursor: registry.cursor,
-            entries: registry.entries.map { entry in
-                StoredEntry(
-                    slot: entry.slot,
-                    sessionID: entry.sessionID,
-                    cwd: entry.cwd,
-                    pid: entry.pid,
-                    tty: entry.tty,
-                    transcriptPath: entry.transcriptPath,
-                    entrypoint: entry.entrypoint,
-                    host: entry.host == .unknown ? nil : entry.host.rawValue,
-                    claudeDesktopSession: entry.claudeDesktopSession,
-                    state: entry.state.rawValue,
-                    claimSeq: entry.claimSeq,
-                    claimedAt: entry.claimedAt,
-                    updatedAt: entry.updatedAt
-                )
-            }
+            entries: registry.entries.map(store),
+            waiting: registry.waiting.isEmpty ? nil : registry.waiting.map(store)
         )
 
         let encoder = JSONEncoder()

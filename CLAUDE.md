@@ -155,8 +155,14 @@ is what makes the suite possible at all.
 
 - **Keys preserve session order, not recency rank.** Closing a CLI session or settling a
   T3 thread shifts later sessions up, skipping reserved action keys. Earlier sessions
-  stay put; ordinary activity and turn completion do not reorder keys. When full,
-  eviction never takes a key currently signalling `awaiting` — see `SessionRegistry`.
+  stay put; ordinary activity and turn completion do not reorder keys.
+- **More sessions than keys wait, they are not dropped.** `SessionRegistry.waiting` holds
+  every session that reported but has no key; the menu bar lists them ("Not on a key")
+  with T3 threads and recent desktop/Cursor chats. A full board only lets a strictly
+  more urgent session take a key: orange takes any non-orange key, working takes a
+  finished one after 10 min (`finishedGrace`). A freed key is refilled from the waiting
+  list (`rebalance`). Put on a key by hand = pinned, never taken automatically; taken
+  off by hand = held off until it next asks for attention.
 - **Eligibility is fail-closed.** `Eligibility.defaultEntrypoints` is an allowlist
   (`cli`, `claude-vscode`, `claude-desktop`). Subagents and embedded SDK clients get no key.
   An unrecognised surface gets nothing rather than stealing a slot. A `claude-desktop`

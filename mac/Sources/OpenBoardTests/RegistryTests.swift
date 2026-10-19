@@ -83,17 +83,17 @@ func runRegistryTests() {
     test("eviction never takes a key that is asking for attention") {
         // Stealing the orange key to show something nobody asked about is the single
         // worst thing this could do — it destroys the one signal the product exists
-        // to deliver.
+        // to deliver. Even another orange may not.
         var registry = SessionRegistry()
         for i in 1...6 { _ = registry.claim(sessionID: "s\(i)", pid: i, isAlive: alwaysAlive) }
         registry.setState(sessionID: "s1", to: .awaiting, pendingTool: "Bash")
         registry.setState(sessionID: "s2", to: .stalled)
 
-        let result = registry.claim(sessionID: "new", pid: 99, isAlive: alwaysAlive)
+        let result = registry.claim(sessionID: "new", pid: 99, state: .awaiting, isAlive: alwaysAlive)
         expectEqual(result.mode, .evicted)
-        expect(result.entry?.slot != 1, "must not evict the awaiting key")
-        expect(result.entry?.slot != 2, "must not evict the stalled key")
+        expectEqual(result.entry?.slot, 3, "the oldest key that is not asking for anything")
         expectEqual(registry.entry(forSession: "s1")?.state, .awaiting)
+        expectEqual(registry.waitingEntry(forSession: "s3")?.slot, 0, "s3 waits off the board")
     }
 
     test("a board where every key is waiting fails dark") {
@@ -104,10 +104,11 @@ func runRegistryTests() {
             _ = registry.claim(sessionID: "s\(i)", pid: i, isAlive: alwaysAlive)
             registry.setState(sessionID: "s\(i)", to: .awaiting)
         }
-        let result = registry.claim(sessionID: "new", pid: 99, isAlive: alwaysAlive)
-        expectEqual(result.mode, .noSlot)
+        let result = registry.claim(sessionID: "new", pid: 99, state: .awaiting, isAlive: alwaysAlive)
+        expectEqual(result.mode, .waiting)
         expect(result.entry == nil)
         expectEqual(registry.entries.count, 6, "nothing was disturbed")
+        expect(registry.waitingEntry(forSession: "new") != nil, "it waits rather than vanishing")
     }
 
     test("leaving an attention state clears what was pending") {
@@ -332,6 +333,7 @@ func runRegistryTests() {
         full.reserve([6])
         expect(full.entry(forSession: "s6") == nil)
         expectEqual(full.entries.count, 5)
+        expect(full.waitingEntry(forSession: "s6") != nil, "off the board, but still known")
     }
 
     // MARK: - event mapping

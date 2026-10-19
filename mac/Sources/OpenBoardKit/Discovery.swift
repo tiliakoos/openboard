@@ -214,13 +214,18 @@ extension SessionRegistry {
             guard let pid = entries[index].pid, isAlive(pid) else { continue }
             entries[index].host = ProcessAncestry.host(ofPID: pid)
         }
+        for index in waiting.indices where waiting[index].host == .unknown {
+            guard let pid = waiting[index].pid, isAlive(pid) else { continue }
+            waiting[index].host = ProcessAncestry.host(ofPID: pid)
+        }
 
         var added = 0
         for session in sessions {
             // Guarded on the *session's* tty, not just the entry's: two extension-hosted
             // chats both have none, and `nil == nil` would make the second one look like
             // a duplicate of the first and cost it its key.
-            let known = entries.contains {
+            // Waiting sessions count: one already listed off the board is known.
+            let known = allEntries.contains {
                 $0.pid == session.pid || (session.tty != nil && $0.tty == session.tty)
             }
             guard !known else { continue }
@@ -230,7 +235,7 @@ extension SessionRegistry {
             let host = ProcessAncestry.host(ofPID: session.pid)
             guard isListening(host) else { continue }
 
-            let result = claim(
+            _ = claim(
                 sessionID: session.placeholderSessionID,
                 cwd: session.cwd,
                 pid: session.pid,
@@ -240,13 +245,16 @@ extension SessionRegistry {
                 now: now,
                 isAlive: isAlive
             )
-            if let entry = result.entry {
-                added += 1
-                // Stored rather than re-resolved: `ps` is not free and the owning app
-                // cannot change while the process lives.
-                if let index = entries.firstIndex(where: { $0.sessionID == entry.sessionID }) {
-                    entries[index].host = host
-                }
+            // On a key or waiting for one: either way it is now known.
+            added += 1
+            // Stored rather than re-resolved: `ps` is not free and the owning app
+            // cannot change while the process lives.
+            if let index = entries.firstIndex(where: { $0.sessionID == session.placeholderSessionID }) {
+                entries[index].host = host
+            } else if let index = waiting.firstIndex(where: {
+                $0.sessionID == session.placeholderSessionID
+            }) {
+                waiting[index].host = host
             }
         }
         return added
@@ -272,12 +280,23 @@ extension SessionRegistry {
         entrypoint: String? = nil,
         now: Date = Date()
     ) -> Bool {
-        guard entry(forSession: sessionID) == nil else { return false }
-        guard let index = entries.firstIndex(where: { candidate in
+        guard !isKnown(sessionID) else { return false }
+        let isHost = { (candidate: Entry) in
             Discovery.isPlaceholder(candidate.sessionID)
                 && ((pid != nil && candidate.pid == pid)
                     || (tty != nil && candidate.tty == tty))
-        }) else { return false }
+        }
+        // A placeholder waiting off the board is renamed in place too, so the session
+        // does not appear twice — once on the list and once claiming a key.
+        if let index = waiting.firstIndex(where: isHost) {
+            waiting[index].sessionID = sessionID
+            waiting[index].updatedAt = now
+            if let cwd { waiting[index].cwd = cwd }
+            if let transcriptPath { waiting[index].transcriptPath = transcriptPath }
+            if let entrypoint { waiting[index].entrypoint = entrypoint }
+            return true
+        }
+        guard let index = entries.firstIndex(where: isHost) else { return false }
 
         entries[index].sessionID = sessionID
         entries[index].updatedAt = now

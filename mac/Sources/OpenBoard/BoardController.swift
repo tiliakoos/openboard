@@ -85,6 +85,28 @@ final class BoardController: ObservableObject {
     private var cursorTitles: [String: String] = [:]
     private var cursorTask: Task<Void, Never>?
     private var lastCursorLog: String?
+    /**
+     Sessions the board has only seen listed, never reported: every T3 thread that may
+     hold a key, and desktop and Cursor chats active in the last `listedWindow`. Shown off
+     the board (when `isWorthListing`) so they can be put on a key by hand, and never
+     placed by themselves — the first T3 snapshot's eighteen old greens are a history,
+     not a board.
+     */
+    private var t3Listed: [T3Code.Listing] = []
+    private var desktopRecent: [ClaudeDesktop.Chat] = []
+    private var desktopRecentAt: Date = .distantPast
+    private var cursorRecent: [Cursor.Recent] = []
+    private var cursorRecentAt: Date = .distantPast
+    /// Listed sessions dismissed by hand, hidden until they report — a new turn makes them
+    /// known to the registry, which then decides. In memory: a relaunch lists only what is
+    /// recent anyway.
+    private var dismissedListed: Set<String> = []
+    /// A key freed by a session ending is kept free this long — see the `.ended` branch.
+    private var refillHeldUntil: Date = .distantPast
+    /// How recent a desktop or Cursor chat must be to be listed. Neither app says on disk
+    /// whether a chat is running, so recency stands in for "active" — the same half hour a
+    /// finished session stays listed.
+    private static let listedWindow = SessionRegistry.recentlyFinished
     /// Sessions already found to belong to a muted surface, so the walk up the process
     /// tree is paid once per session rather than once per hook. Keyed by session id,
     /// not pid, because the OS reuses pids. Cleared whenever the setting changes,
@@ -456,13 +478,14 @@ final class BoardController: ObservableObject {
         // see RegistryStore.
         registry = RegistryStore.load(staleInterval: prefs.staleInterval)
         applyPreferences()
-        if !registry.entries.isEmpty {
+        if !registry.allEntries.isEmpty {
             Log.write(
                 "registry: restored \(registry.entries.count) session(s) — "
                     + registry.entries
                         .sorted { $0.slot < $1.slot }
                         .map { "\($0.slot):\($0.state.rawValue)" }
                         .joined(separator: " ")
+                    + (registry.waiting.isEmpty ? "" : ", \(registry.waiting.count) waiting off the board")
             )
         }
 
@@ -883,7 +906,7 @@ final class BoardController: ObservableObject {
          republished and rewrote the registry file continuously for churn no row could
          ever display. Nothing reads this map except by a session's pid.
         */
-        let sessionPIDs = Set(registry.entries.compactMap(\.pid))
+        let sessionPIDs = Set(registry.allEntries.compactMap(\.pid))
         let surfaces = await Task.detached { Cmux.surfaces(cli: cli) }.value
             .filter { sessionPIDs.contains($0.key) }
 
@@ -916,17 +939,31 @@ final class BoardController: ObservableObject {
     /// Free the key of any desktop chat archived in the Claude app — it sends no
     /// `SessionEnd` and its process lives on, so nothing else would. See `ClaudeDesktop`.
     private func releaseArchivedDesktopSessions() async {
-        let archived = registry.entries.filter {
+        let archived = registry.allEntries.filter {
             $0.claudeDesktopSession.map { ClaudeDesktop.isArchived(hostSessionID: $0) } ?? false
         }
         guard !archived.isEmpty else { return }
         for entry in archived {
             SessionTitle.forget(transcriptPath: entry.transcriptPath)
             registry.release(sessionID: entry.sessionID)
-            Log.write("released slot \(entry.slot) (\(entry.sessionID.prefix(8))) — archived in the Claude app")
+            Log.write("released \(Self.place(entry)) (\(entry.sessionID.prefix(8))) — archived in the Claude app")
         }
+        rebalanceBoard()
         publish()
         await paint()
+    }
+
+    /// The desktop chats for the off-board list. At most every ten seconds, and off the
+    /// main actor: it lists a directory of a few hundred records.
+    private func refreshDesktopChats() async {
+        guard Date().timeIntervalSince(desktopRecentAt) >= 10 else { return }
+        desktopRecentAt = Date()
+        let since = Date().addingTimeInterval(-Self.listedWindow)
+        let chats = await Task.detached { ClaudeDesktop.recentChats(since: since) }.value
+        let changed = chats.map { [$0.sessionID, $0.title ?? ""] }
+            != desktopRecent.map { [$0.sessionID, $0.title ?? ""] }
+        desktopRecent = chats
+        if changed { publish() }
     }
 
     /**
@@ -1004,7 +1041,12 @@ final class BoardController: ObservableObject {
         }
 
         let mode = Ambient.Mode(rawValue: model.preferences.ambient.mode) ?? .events
+        // A session waiting off the board that is asking for you counts: the ring is the
+        // one place its orange can still show.
         let states = registry.occupancy().map { $0.entry?.state }
+            + registry.waiting
+                .filter { $0.state.isAttention && !$0.held && !$0.dismissed }
+                .map { Optional($0.state) }
         guard let resolved = Ambient.resolve(
             states: states, mode: mode, appearances: model.appearances,
             // Without this, `fixed` resolves to nothing and the ring is silently dark —
@@ -1285,8 +1327,13 @@ final class BoardController: ObservableObject {
             status = .connected(threads: snapshot.threads.count)
             // Before the events, so a thread's first row already carries its name.
             titlesChanged = update.titles != t3Titles || update.projects != t3Projects
+                // Not `updatedAt`: it moves with every running thread, and the row's age
+                // only needs to be as fresh as the next publish.
+                || update.listed.map { [$0.threadID, $0.title ?? "", $0.phase.rawValue] }
+                    != t3Listed.map { [$0.threadID, $0.title ?? "", $0.phase.rawValue] }
             t3Titles = update.titles
             t3Projects = update.projects
+            t3Listed = update.listed
             promptSubmitted = update.promptSubmitted
             // Once per value: a status this was not written against means a nightly
             // changed the model, and the thread is showing white because of it.
@@ -1313,6 +1360,12 @@ final class BoardController: ObservableObject {
 
         model.apply(t3Status: status)
         lastT3Log = Log.changed("t3", last: lastT3Log, to: status.summary + (reason.map { " (\($0))" } ?? ""))
+        // Given up on the server — gone past its grace, or a token it refuses: its threads
+        // are not listed either.
+        if !t3.isPrimed, !t3Listed.isEmpty {
+            t3Listed = []
+            titlesChanged = true
+        }
 
         for emission in emissions {
             await handle(HookServer.Event(raw: emission.payload))
@@ -1349,23 +1402,35 @@ final class BoardController: ObservableObject {
      every row takes the chat's own name.
      */
     private func pollCursor() async -> Duration {
-        let onBoard = registry.entries.compactMap { Cursor.chatID(fromSession: $0.sessionID) }
+        // On a key or waiting for one: a waiting chat that turns orange must be seen.
+        let known = registry.allEntries.compactMap { Cursor.chatID(fromSession: $0.sessionID) }
         // Off the main actor: a read can wait up to 100 ms on a write in progress.
-        let headers = await Task.detached { Cursor.readHeaders(ids: onBoard) }.value
-        // Only when there was something to read: with no chats on the board nothing is opened.
-        if !onBoard.isEmpty {
+        let headers = await Task.detached { Cursor.readHeaders(ids: known) }.value
+        // Only when there was something to read: with no chats known nothing is opened.
+        if !known.isEmpty {
             lastCursorLog = Log.changed(
                 "cursor", last: lastCursorLog,
                 to: headers == nil ? "chat list unreadable — keys held as they are" : "chat list readable"
             )
         }
-        let update = cursor.apply(headers, onBoard: onBoard)
+        let update = cursor.apply(headers, known: known)
         for emission in update.emissions {
             await handle(HookServer.Event(raw: emission.payload))
         }
         if headers != nil, update.titles != cursorTitles {
             cursorTitles = update.titles
             publish()
+        }
+        // The off-board list's recent chats, every ten seconds rather than every poll.
+        if Date().timeIntervalSince(cursorRecentAt) >= 10 {
+            cursorRecentAt = Date()
+            let since = Date().addingTimeInterval(-Self.listedWindow)
+            // Unreadable (a write in progress) is not "no chats": keep what was there.
+            let recent = await Task.detached { Cursor.readRecent(since: since) }.value ?? cursorRecent
+            let changed = recent.map { [$0.chatID, $0.name ?? ""] }
+                != cursorRecent.map { [$0.chatID, $0.name ?? ""] }
+            cursorRecent = recent
+            if changed { publish() }
         }
         return .milliseconds(1500)
     }
@@ -1382,9 +1447,9 @@ final class BoardController: ObservableObject {
         if emission.claims, voiceIsActive {
             setVoice(false, why: "prompt submitted (Cursor)")
         }
-        // Only a prompt takes a key. A tool call or a stop in a chat that has none —
-        // a subagent's, or Cmd-K's — has nothing to update.
-        guard emission.claims || registry.entry(forSession: emission.sessionID) != nil else { return }
+        // Only a prompt takes a key. A tool call or a stop in a chat the board does not
+        // know — a subagent's, or Cmd-K's — has nothing to update.
+        guard emission.claims || registry.isKnown(emission.sessionID) else { return }
         await handle(HookServer.Event(raw: emission.payload))
     }
 
@@ -1543,16 +1608,16 @@ final class BoardController: ObservableObject {
 
         var sessionID = continuations[hookSessionID] ?? hookSessionID
         if event.environment["CLAUDE_CODE_SESSION_KIND"] == "bg",
-           registry.entry(forSession: sessionID) == nil {
-            guard let parent = registry.entries.first(where: {
+           !registry.isKnown(sessionID) {
+            guard let parent = registry.allEntries.first(where: {
                 SessionTranscript.continuation(of: $0.transcriptPath) == hookSessionID
             }) else {
-                Log.write("hook \(event.name): refused (background session, parent not on the board)")
+                Log.write("hook \(event.name): refused (background session, parent not known)")
                 return
             }
             continuations[hookSessionID] = parent.sessionID
             sessionID = parent.sessionID
-            Log.write("hook \(event.name): merged into slot \(parent.slot) (\(parent.sessionID.prefix(8)))")
+            Log.write("hook \(event.name): merged into \(Self.place(parent)) (\(parent.sessionID.prefix(8)))")
             if event.name == "SessionStart" { return }
         }
 
@@ -1570,10 +1635,14 @@ final class BoardController: ObservableObject {
          */
         if state == .ended {
             mutedSessions.remove(sessionID)
-            if let entry = registry.entry(forSession: sessionID) {
+            if let entry = registry.known(forSession: sessionID) {
                 SessionTitle.forget(transcriptPath: entry.transcriptPath)
                 registry.release(sessionID: sessionID)
-                Log.write("hook \(event.name): released slot \(entry.slot) (\(sessionID.prefix(8)))")
+                Log.write("hook \(event.name): released \(Self.place(entry)) (\(sessionID.prefix(8)))")
+                // Not refilled at once. `/clear` ends a session and starts its successor in
+                // the same tab a moment later, and that successor — idle, so unable to
+                // displace anyone — must find the key still free. The next tidy fills it.
+                refillHeldUntil = Date().addingTimeInterval(3)
                 publish()
                 await paint()
             }
@@ -1583,7 +1652,7 @@ final class BoardController: ObservableObject {
         // Captured before anything mutates the registry: a lap fires on a *transition*,
         // never on a repaint. Reading it afterwards would compare a state to itself and
         // either fire on every hook or never fire at all.
-        let previousState = registry.entry(forSession: sessionID)?.state
+        let previousState = registry.known(forSession: sessionID)?.state
 
         /*
          Adopt a session we have never seen start, before anything else looks at it.
@@ -1630,7 +1699,7 @@ final class BoardController: ObservableObject {
         */
         // A resume can bring a session back in another surface, so a start asks again.
         if event.name == "SessionStart" { mutedSessions.remove(sessionID) }
-        if registry.entry(forSession: sessionID) == nil, let pid = hookPID {
+        if !registry.isKnown(sessionID), let pid = hookPID {
             let host = mutedSessions.contains(sessionID) ? nil : ProcessAncestry.host(ofPID: pid)
             if host == .headless {
                 mutedSessions.insert(sessionID)
@@ -1655,7 +1724,7 @@ final class BoardController: ObservableObject {
          adoption below picks the session up from its first prompt or tool call instead.
         */
         if event.name == "SessionStart", event.entrypoint == "claude-desktop",
-           registry.entry(forSession: sessionID) == nil {
+           !registry.isKnown(sessionID) {
             Log.write("hook SessionStart: deferred (claude-desktop takes a key at its first event)")
             return
         }
@@ -1670,18 +1739,21 @@ final class BoardController: ObservableObject {
         ) {
             Log.write("hook \(event.name): matched a running session already on the board")
             registry.setState(sessionID: sessionID, to: state, pendingTool: event.toolName)
+            rebalanceBoard()
             publish()
             fireLap(from: previousState, sessionID: sessionID)
             await paint()
             return
         }
 
-        if event.name != "SessionStart", registry.entry(forSession: sessionID) == nil {
+        // Not for a session waiting off the board: it is known, and the branches below
+        // update it in place. `rebalance` at the end decides whether it gets a key.
+        if event.name != "SessionStart", !registry.isKnown(sessionID) {
             Log.write("hook \(event.name): adopting a session already in progress")
             // The tty is what makes a jump exact — Terminal's dictionary exposes it
             // per tab. Omitting it here meant an adopted session could be seen but not
             // raised: "jump to slot 1 -> noWindow".
-            _ = registry.claim(
+            let claimed = registry.claim(
                 sessionID: sessionID,
                 cwd: event.cwd,
                 pid: hookPID,
@@ -1691,6 +1763,7 @@ final class BoardController: ObservableObject {
                 entrypoint: event.entrypoint,
                 state: state
             )
+            logClaim(claimed, event: event.name, sessionID: sessionID)
             // Publish immediately.
             //
             // The branches below can return early — an attention-clear for a session
@@ -1736,7 +1809,7 @@ final class BoardController: ObservableObject {
         }
 
         if event.name == "SessionStart" {
-            _ = registry.claim(
+            let claimed = registry.claim(
                 sessionID: sessionID,
                 cwd: event.cwd,
                 pid: hookPID,
@@ -1746,6 +1819,7 @@ final class BoardController: ObservableObject {
                 entrypoint: event.entrypoint,
                 state: state
             )
+            logClaim(claimed, event: event.name, sessionID: sessionID)
             // The enrich above ran before this claim, so a new desktop session would
             // otherwise not be jumpable until its first prompt.
             registry.enrich(sessionID: sessionID, claudeDesktopSession: desktopSession)
@@ -1769,7 +1843,7 @@ final class BoardController: ObservableObject {
              Skipping when it is *already* working keeps the write traffic exactly where
              it was: that is the common case by a wide margin.
              */
-            guard let existing = registry.entry(forSession: sessionID),
+            guard let existing = registry.known(forSession: sessionID),
                   existing.state != .working
             else { return }
             registry.setState(sessionID: sessionID, to: .working)
@@ -1787,7 +1861,7 @@ final class BoardController: ObservableObject {
              matching this function's own "a branch that declines says so on its own
              line, without touching the registry" precedent (`clearsAttention` above).
              */
-            let delegatedBefore = registry.entry(forSession: sessionID)?.delegatingAgentIDs.count ?? 0
+            let delegatedBefore = registry.known(forSession: sessionID)?.delegatingAgentIDs.count ?? 0
             if EventMapper.suppressesDelegating(
                 eventName: event.name,
                 matcher: event.matcher,
@@ -1830,7 +1904,7 @@ final class BoardController: ObservableObject {
                     ids: event.backgroundTaskIDs
                 )
             }
-            let delegatedCount = registry.entry(forSession: sessionID)?.delegatingAgentIDs.count ?? 0
+            let delegatedCount = registry.known(forSession: sessionID)?.delegatingAgentIDs.count ?? 0
             let delegating = delegatedCount > 0
             let applied = (state == .done && delegating) ? SessionState.background : state
             if state == .done, delegating {
@@ -1842,9 +1916,47 @@ final class BoardController: ObservableObject {
             registry.setState(sessionID: sessionID, to: applied, pendingTool: event.toolName)
         }
 
+        // A state change can entitle a waiting session to a key — this one, or another.
+        rebalanceBoard()
         publish()
         fireLap(from: previousState, sessionID: sessionID)
         await paint()
+    }
+
+    /// Say where a claim landed — on a key, from whom, or nowhere. A key changing hands
+    /// without a line is how a working thread once vanished from the board unexplained.
+    private func logClaim(_ result: SessionRegistry.ClaimResult, event: String, sessionID: String) {
+        let id = sessionID.prefix(8)
+        switch result.mode {
+        case .kept:
+            return
+        case .waiting:
+            Log.write("hook \(event): no key \(id) may take — waiting off the board")
+        default:
+            let from = result.displaced.map { " from \($0.sessionID.prefix(8)), which now waits off the board" } ?? ""
+            Log.write("hook \(event): \(id) took slot \(result.entry?.slot ?? 0) (\(result.mode.rawValue))\(from)")
+        }
+    }
+
+    /// Give waiting sessions the keys they are owed, and log each one.
+    @discardableResult
+    private func rebalanceBoard() -> Bool {
+        guard Date() >= refillHeldUntil else { return false }
+        let placed = registry.rebalance()
+        for placement in placed {
+            let from = placement.displaced
+                .map { " from \($0.sessionID.prefix(8)), which now waits off the board" } ?? ""
+            Log.write(
+                "slot \(placement.entry.slot): \(placement.entry.sessionID.prefix(8)) "
+                    + "back on the board (\(placement.mode.rawValue))\(from)"
+            )
+        }
+        return !placed.isEmpty
+    }
+
+    /// "slot 3", or "off the board" for a session waiting for a key.
+    private static func place(_ entry: SessionRegistry.Entry) -> String {
+        entry.slot > 0 ? "slot \(entry.slot)" : "off the board"
     }
 
     /**
@@ -1855,7 +1967,9 @@ final class BoardController: ObservableObject {
      nothing — which costs the one signal that is visible from across the room.
      */
     private func fireLap(from previous: SessionState?, sessionID: String) {
-        let current = registry.entry(forSession: sessionID)?.state
+        // Known, not only on a key: one waiting off the board that turns orange still laps
+        // the ring, or it would be an orange nobody can see.
+        let current = registry.known(forSession: sessionID)?.state
         if current != previous { lastActivity = Date() }
         guard let name = Laps.show(
             from: previous, to: current, settings: model.preferences.ambient
@@ -1939,11 +2053,15 @@ final class BoardController: ObservableObject {
                     await self.askStatus()
                 } else {
                     await self.closeDevice()
+                    // `paint` is not called while the pad is away, and the menu bar
+                    // still shows the board.
+                    self.tidyRegistry()
                 }
 
                 await self.refreshTerminalTitles()
                 await self.refreshCmuxSurfaces()
                 await self.releaseArchivedDesktopSessions()
+                await self.refreshDesktopChats()
                 await self.publishDeviceStatus(present: present)
                 try? await Task.sleep(for: present ? self.presentInterval : self.absentInterval)
             }
@@ -2028,6 +2146,35 @@ final class BoardController: ObservableObject {
 
     // MARK: - painting
 
+    /**
+     Drop sessions whose process is gone, age what is left, and give waiting sessions the
+     keys they are owed.
+
+     `prune` existed with exactly the right reasoning in its own doc comment — "a dead
+     session holding a key makes the board claim activity that does not exist" — and was
+     never called from anywhere. So a closed Terminal tab kept its key until the 12h stale
+     window, and the header counted it as live. `rebalance` runs here, not only on events,
+     because a finished key's grace runs out with no event at all.
+     */
+    private func tidyRegistry() {
+        var boardChanged = registry.prune() > 0
+        if registry.decay(
+            doneAfter: TimeInterval(model.preferences.doneDecaySeconds),
+            holdAttention: model.preferences.holdAttention
+        ) > 0 {
+            boardChanged = true
+        }
+        if rebalanceBoard() { boardChanged = true }
+        if boardChanged { publish() }
+    }
+
+    /// What the ring and auto-off read: every key, and any session waiting off the board
+    /// that is asking for you — unless you took it off or dismissed it.
+    private var signalledStates: [SessionState] {
+        registry.entries.map(\.state)
+            + registry.waiting.filter { $0.state.isAttention && !$0.held && !$0.dismissed }.map(\.state)
+    }
+
     /// Push the whole board to the pad.
     ///
     /// Nothing paints without calibration: slot order is never assumed, and a
@@ -2064,6 +2211,10 @@ final class BoardController: ObservableObject {
             }
         }
 
+        // Before any guard: the menu bar shows the board with the pad asleep or away, so
+        // what it lists must stay true without one.
+        tidyRegistry()
+
         guard deviceIsOpen else {
             lastPaintLog = Log.changed("paint", last: lastPaintLog, to: "skipped — device not open")
             return
@@ -2083,27 +2234,10 @@ final class BoardController: ObservableObject {
             return
         }
 
-        /*
-         Drop sessions whose process is gone, then age what is left.
-
-         `prune` existed with exactly the right reasoning in its own doc comment — "a
-         dead session holding a key makes the board claim activity that does not exist"
-         — and was never called from anywhere. So a closed Terminal tab kept its key
-         until the 12h stale window, and the header counted it as live.
-         */
-        var boardChanged = registry.prune() > 0
-        if registry.decay(
-            doneAfter: TimeInterval(model.preferences.doneDecaySeconds),
-            holdAttention: model.preferences.holdAttention
-        ) > 0 {
-            boardChanged = true
-        }
-        if boardChanged { publish() }
-
         let dark = !voiceIsActive && AutoOff.isDark(
             idleFor: Date().timeIntervalSince(lastActivity),
             after: model.preferences.autoOffSeconds,
-            states: registry.entries.map(\.state)
+            states: signalledStates
         )
         if dark != isDark {
             Log.write("auto-off: lights \(dark ? "off" : "on")")
@@ -2327,23 +2461,83 @@ final class BoardController: ObservableObject {
     }
 
     /**
-     Free one key.
+     Take a session off its key, by hand.
 
-     The session keeps running — this forgets the *binding*, it does not stop anything.
-     Needed because a session whose process died without emitting `SessionEnd` holds its
-     slot until the stale window expires, and "forget all" is a poor answer to one row
-     being wrong.
+     The session keeps running and stays listed off the board, where it can be put back.
+     It is not put back by itself until it next asks for attention — you took it off for
+     a reason. The freed key goes to whoever is waiting for one. A session whose process
+     died is dropped from the list by `prune` as before.
      */
     func release(slot: Int) {
-        guard let entry = registry.occupancy().first(where: { $0.slot == slot })?.entry else {
-            return
-        }
-        // Drop the cached name too, or a key reused by a different chat keeps the old one.
-        SessionTitle.forget(transcriptPath: entry.transcriptPath)
-        registry.release(sessionID: entry.sessionID)
-        Log.write("released slot \(slot) (\(entry.sessionID.prefix(8)))")
+        guard let entry = registry.entry(forSlot: slot),
+              registry.bench(sessionID: entry.sessionID) != nil
+        else { return }
+        Log.write("took slot \(slot) off the board (\(entry.sessionID.prefix(8))) — stays off until put back")
+        rebalanceBoard()
         publish()
         Task { await paint() }
+    }
+
+    /**
+     Put a session from the off-board list on a key, by hand, and pin it there.
+
+     One only ever seen listed — a T3 thread, a desktop or Cursor chat — is made known
+     first, and a T3 thread starts being tracked, so its key follows it from here on.
+     */
+    func assign(sessionID: String, toSlot slot: Int) {
+        if !registry.isKnown(sessionID) { enlistListed(sessionID) }
+        guard let placed = registry.assign(sessionID: sessionID, toSlot: slot) else {
+            Log.write("put \(sessionID.prefix(8)) on slot \(slot): refused")
+            return
+        }
+        let replaced = placed.displaced
+            .map { ", replacing \($0.sessionID.prefix(8)), which stays off until put back" } ?? ""
+        Log.write("put \(sessionID.prefix(8)) on slot \(placed.entry.slot) by hand\(replaced)")
+        publish()
+        Task { await paint() }
+    }
+
+    private func enlistListed(_ sessionID: String) {
+        if let listing = t3Listed.first(where: { $0.sessionID == sessionID }) {
+            // Not in the last snapshot: nothing would ever update or release its key.
+            guard let phase = t3.track(sessionID: sessionID) else { return }
+            registry.enlist(
+                sessionID: sessionID,
+                cwd: listing.cwd,
+                entrypoint: T3Code.entrypoint,
+                state: EventMapper.state(for: phase.eventName) ?? .idle
+            )
+            // Named now rather than at the next poll, which only names tracked threads.
+            if let title = listing.title { t3Titles[sessionID] = title }
+            if let project = listing.project { t3Projects[sessionID] = project }
+        } else if let chat = desktopRecent.first(where: { $0.sessionID == sessionID }) {
+            registry.enlist(
+                sessionID: sessionID,
+                cwd: chat.cwd,
+                transcriptPath: SessionTranscript.locate(sessionID: sessionID),
+                entrypoint: "claude-desktop",
+                claudeDesktopSession: chat.hostSessionID
+            )
+        } else if let chat = cursorRecent.first(where: { $0.sessionID == sessionID }) {
+            registry.enlist(sessionID: sessionID, cwd: chat.cwd, entrypoint: Cursor.entrypoint)
+            if let name = chat.name { cursorTitles[sessionID] = name }
+        }
+    }
+
+    /// Hide a session from the off-board list until it starts a new turn or asks for you.
+    func dismiss(sessionID: String) {
+        if !registry.dismiss(sessionID: sessionID) { dismissedListed.insert(sessionID) }
+        Log.write("dismissed \(sessionID.prefix(8)) from the off-board list — back on its next turn")
+        publish()
+    }
+
+    /// Bring up a session from the off-board list, as its key would.
+    func jump(toSession sessionID: String) {
+        guard let view = model.offBoard.first(where: { $0.sessionID == sessionID }) else { return }
+        let here = Focus.here()
+        let outcome = Focus.raise(view)
+        if case .raised = outcome, let here { backHistory.record(here) }
+        Log.write("jump to \(sessionID.prefix(8)) (off the board) -> \(outcome)")
     }
 
     /// Put a session on the key `delta` places away, swapping with whatever is there.
@@ -2361,6 +2555,11 @@ final class BoardController: ObservableObject {
 
     func forgetAllSessions() {
         registry.reset()
+        // The pollers' baselines go too. Otherwise every thread T3 still tracks stays off
+        // the board until its phase next changes — the stuck key the off-board list ended.
+        t3 = T3Code.State()
+        t3Listed = []
+        cursor = Cursor.State()
         publish()
         Task { await paint() }
     }
@@ -2370,44 +2569,125 @@ final class BoardController: ObservableObject {
     private func publish() {
         let slots = registry.occupancy().map { slot, entry -> SlotView in
             guard let entry else { return SlotView(slot: slot) }
-            // What you asked for, falling back to the folder. Two sessions in one repo
-            // are otherwise identical rows.
-            // The tab title first: Claude Code keeps it describing what the session
-            // is *now*, where the first message describes what it was when it started.
-            let name = self.name(of: entry)
-            // Not `focused`: that is the property holding what is in front of you, and
-            // shadowing it here reads as though the two are the same thing.
-            let viewing = isFocused(entry, name: name)
-            let shown = Viewing.display(entry.state, isFocused: viewing)
-            return SlotView(
-                slot: slot,
-                state: shown,
-                // What you asked for, falling back to the folder. Two sessions in one
-                // repo are otherwise identical rows.
-                title: name ?? entry.cwd.map { URL(fileURLWithPath: $0).lastPathComponent },
-                project: t3Projects[entry.sessionID] ?? entry.cwd.map(Self.projectName),
-                surface: entry.tty.map { $0.replacingOccurrences(of: "/dev/", with: "") }
-                    ?? entry.entrypoint,
-                age: Self.age(of: entry.updatedAt),
-                sessionID: entry.sessionID,
-                pendingTool: entry.pendingTool,
-                origin: SessionOrigin.from(
-                    entrypoint: entry.entrypoint, tty: entry.tty, host: entry.host
-                ),
-                pid: entry.pid,
-                cmuxSurface: entry.pid.flatMap { cmuxSurfaces[$0] },
-                entrypoint: entry.entrypoint,
-                claudeDesktopSession: entry.claudeDesktopSession,
-                isNamed: name != nil,
-                cwd: entry.cwd,
-                // The same resolution the pad gets, from the same configured colors, so
-                // the dot and the swatch cannot drift from the key.
-                emitting: Viewing.appearance(shown, isFocused: viewing, from: model.appearances),
-                isFocused: viewing
-            )
+            return view(of: entry, slot: slot)
         }
         model.apply(slots: slots)
+        model.apply(offBoard: offBoard())
         RegistryStore.save(registry)
+    }
+
+    /**
+     Every active session without a key, most urgent first: those waiting for one, then
+     those only seen listed. A listed session already known to the registry is shown once,
+     as the registry has it.
+     */
+    private func offBoard() -> [SlotView] {
+        let now = Date()
+        let known = Set(registry.allEntries.map(\.sessionID))
+        dismissedListed.subtract(known)
+        let hidden = known.union(dismissedListed)
+        // A desktop chat's `claude` session id can change under it; the app's own id cannot.
+        let knownChats = Set(registry.allEntries.compactMap(\.claudeDesktopSession))
+        var rows: [(view: SlotView, state: SessionState, at: Date)] = registry.waiting
+            .filter { !$0.dismissed && SessionRegistry.isWorthListing($0.state, since: $0.updatedAt, now: now) }
+            .map { (view(of: $0, slot: 0), $0.state, $0.updatedAt) }
+        for thread in t3Listed where !hidden.contains(thread.sessionID) {
+            let state = EventMapper.state(for: thread.phase.eventName) ?? .idle
+            let finished = thread.finishedAt ?? thread.updatedAt ?? .distantPast
+            guard SessionRegistry.isWorthListing(state, since: finished, now: now) else { continue }
+            rows.append((listed(
+                sessionID: thread.sessionID, state: state, title: thread.title,
+                project: thread.project, cwd: thread.cwd, at: finished,
+                entrypoint: T3Code.entrypoint
+            ), state, finished))
+        }
+        // No state on disk: active within `listedWindow` is what makes these worth listing.
+        for chat in desktopRecent where !hidden.contains(chat.sessionID)
+            && !knownChats.contains(chat.hostSessionID)
+            && now.timeIntervalSince(chat.lastActivity) < Self.listedWindow {
+            var view = listed(
+                sessionID: chat.sessionID, state: .idle, title: chat.title,
+                project: chat.cwd.map(Self.projectName), cwd: chat.cwd, at: chat.lastActivity,
+                entrypoint: "claude-desktop"
+            )
+            view.claudeDesktopSession = chat.hostSessionID
+            rows.append((view, .idle, chat.lastActivity))
+        }
+        for chat in cursorRecent where !hidden.contains(chat.sessionID)
+            && now.timeIntervalSince(chat.updatedAt) < Self.listedWindow {
+            rows.append((listed(
+                sessionID: chat.sessionID, state: .idle, title: chat.name,
+                project: chat.cwd.map(Self.projectName), cwd: chat.cwd, at: chat.updatedAt,
+                entrypoint: Cursor.entrypoint
+            ), .idle, chat.updatedAt))
+        }
+        return rows.sorted { a, b in
+            let (x, y) = (SessionRegistry.Standing(a.state), SessionRegistry.Standing(b.state))
+            if x != y { return x > y }
+            if a.at != b.at { return a.at > b.at }
+            return (a.view.sessionID ?? "") < (b.view.sessionID ?? "")
+        }.map(\.view)
+    }
+
+    private func listed(
+        sessionID: String, state: SessionState, title: String?, project: String?,
+        cwd: String?, at: Date?, entrypoint: String
+    ) -> SlotView {
+        SlotView(
+            slot: 0,
+            state: state,
+            title: title ?? cwd.map { URL(fileURLWithPath: $0).lastPathComponent },
+            project: project,
+            surface: entrypoint,
+            age: at.map(Self.age(of:)),
+            sessionID: sessionID,
+            origin: SessionOrigin.from(entrypoint: entrypoint, tty: nil, host: .unknown),
+            entrypoint: entrypoint,
+            isNamed: title != nil,
+            cwd: cwd,
+            emitting: Viewing.appearance(state, isFocused: false, from: model.appearances),
+            isListed: true
+        )
+    }
+
+    private func view(of entry: SessionRegistry.Entry, slot: Int) -> SlotView {
+        // What you asked for, falling back to the folder. Two sessions in one repo
+        // are otherwise identical rows.
+        // The tab title first: Claude Code keeps it describing what the session
+        // is *now*, where the first message describes what it was when it started.
+        let name = self.name(of: entry)
+        // Not `focused`: that is the property holding what is in front of you, and
+        // shadowing it here reads as though the two are the same thing.
+        let viewing = isFocused(entry, name: name)
+        let shown = Viewing.display(entry.state, isFocused: viewing)
+        return SlotView(
+            slot: slot,
+            state: shown,
+            // What you asked for, falling back to the folder. Two sessions in one
+            // repo are otherwise identical rows.
+            title: name ?? entry.cwd.map { URL(fileURLWithPath: $0).lastPathComponent },
+            project: t3Projects[entry.sessionID] ?? entry.cwd.map(Self.projectName),
+            surface: entry.tty.map { $0.replacingOccurrences(of: "/dev/", with: "") }
+                ?? entry.entrypoint,
+            age: Self.age(of: entry.updatedAt),
+            sessionID: entry.sessionID,
+            pendingTool: entry.pendingTool,
+            origin: SessionOrigin.from(
+                entrypoint: entry.entrypoint, tty: entry.tty, host: entry.host
+            ),
+            pid: entry.pid,
+            cmuxSurface: entry.pid.flatMap { cmuxSurfaces[$0] },
+            entrypoint: entry.entrypoint,
+            claudeDesktopSession: entry.claudeDesktopSession,
+            isNamed: name != nil,
+            cwd: entry.cwd,
+            // The same resolution the pad gets, from the same configured colors, so
+            // the dot and the swatch cannot drift from the key.
+            emitting: Viewing.appearance(shown, isFocused: viewing, from: model.appearances),
+            isFocused: viewing,
+            isPinned: entry.pinned,
+            isHeld: entry.held
+        )
     }
 
     private static func projectName(_ path: String) -> String {
