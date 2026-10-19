@@ -1639,10 +1639,15 @@ final class BoardController: ObservableObject {
                 SessionTitle.forget(transcriptPath: entry.transcriptPath)
                 registry.release(sessionID: sessionID)
                 Log.write("hook \(event.name): released \(Self.place(entry)) (\(sessionID.prefix(8)))")
-                // Not refilled at once. `/clear` ends a session and starts its successor in
-                // the same tab a moment later, and that successor — idle, so unable to
-                // displace anyone — must find the key still free. The next tidy fills it.
-                refillHeldUntil = Date().addingTimeInterval(3)
+                // Not refilled at once after `/clear`: it ends a session and starts its
+                // successor in the same tab a moment later, and that successor — idle, so
+                // unable to displace anyone — must find the key still free. Anything else
+                // (a settled thread, a closed tab) is refilled now.
+                if event.raw["reason"] as? String == "clear" {
+                    refillHeldUntil = Date().addingTimeInterval(3)
+                } else {
+                    rebalanceBoard()
+                }
                 publish()
                 await paint()
             }
@@ -2053,9 +2058,10 @@ final class BoardController: ObservableObject {
                     await self.askStatus()
                 } else {
                     await self.closeDevice()
-                    // `paint` is not called while the pad is away, and the menu bar
-                    // still shows the board.
-                    self.tidyRegistry()
+                    // The menu bar still shows the board while the pad is away. Through
+                    // `paint`, which tidies before its device guard, so the registry is
+                    // never mutated while a paint is parked mid-write.
+                    await self.paint()
                 }
 
                 await self.refreshTerminalTitles()
