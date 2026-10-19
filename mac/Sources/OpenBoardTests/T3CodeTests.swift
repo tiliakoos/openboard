@@ -103,6 +103,10 @@ func runT3CodeTests() {
     test("the activity status wins over the thread status") {
         // A run woken by a subagent is running even though its thread reads completed.
         expectEqual(try phase(["status": "completed", "activityRunStatus": "running"]), .working)
+        expectEqual(try phase([
+            "status": "cancelled", "activityRunStatus": "running",
+            "pendingBackgroundTasks": [["kind": "subagent", "taskId": "x"]],
+        ]), .working)
         expectEqual(try phase(["status": "completed", "activityRunStatus": NSNull()]), .done)
     }
 
@@ -111,11 +115,15 @@ func runT3CodeTests() {
             ["id": "r1", "kind": kind, "createdAt": "2026-10-05T13:11:44.369Z"]
         }
         expectEqual(try phase(["status": "running", "pendingRuntimeRequest": request("command")]), .awaiting)
+        expectEqual(try phase([
+            "status": "cancelled", "pendingRuntimeRequest": request("command"),
+            "pendingBackgroundTasks": [["kind": "subagent", "taskId": "x"]],
+        ]), .awaiting)
         expectEqual(try phase(["status": "running", "pendingRuntimeRequest": request("user_input")]), .awaiting)
         expectEqual(try phase(["status": "running", "pendingRuntimeRequest": request("auth_refresh")]), .working)
     }
 
-    test("a completed run with background work still running is background, whatever the kind") {
+    test("completed, cancelled and interrupted runs retain pending background work") {
         let tasks = { (kind: String) -> [String: Any] in
             ["status": "completed", "pendingBackgroundTasks": [["kind": kind, "taskId": "x"]]]
         }
@@ -125,6 +133,12 @@ func runT3CodeTests() {
             expectEqual(try phase(tasks(kind)), .background, kind)
         }
         expectEqual(try phase(["status": "completed", "pendingBackgroundTasks": []]), .done)
+        for status in ["cancelled", "interrupted"] {
+            expectEqual(try phase([
+                "status": status, "pendingBackgroundTasks": [["kind": "subagent", "taskId": "x"]],
+            ]), .background, status)
+            expectEqual(try phase(["status": status, "pendingBackgroundTasks": []]), .idle, status)
+        }
     }
 
     // MARK: - eligibility

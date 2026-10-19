@@ -136,9 +136,10 @@ public enum T3Code {
      sidebar shows it as "Connecting", and a key that stays white while you wait for a
      turn to start reads as broken. `waiting` — the turn is over and checkpointing is
      still running — is working, never orange: it waits on T3, not on you. And a
-     completed run with background work still pending is `background`, whatever the
-     kind: T3 lets a command count as finished, but a command can be a CI watch the
-     agent will wake for, and nothing in the kind tells it from a dev server.
+     completed, cancelled or interrupted run with background work still pending is
+     `background`, whatever the kind: T3 lets a command count as finished, but a command
+     can be a CI watch the agent will wake for, and nothing in the kind tells it from a
+     dev server.
      */
     public static func phase(of thread: ThreadShell) -> Phase {
         if let request = thread.pendingRuntimeRequest, request.kind != "auth_refresh" {
@@ -149,6 +150,8 @@ public enum T3Code {
             return .working
         case "completed":
             return (thread.pendingBackgroundTasks ?? []).isEmpty ? .done : .background
+        case "cancelled", "interrupted":
+            return (thread.pendingBackgroundTasks ?? []).isEmpty ? .idle : .background
         case "failed":
             return .error
         default:
