@@ -206,10 +206,13 @@ final class BoardController: ObservableObject {
     private var lastRingAt: Date = .distantPast
     /// Last pad input or status change. See `AutoOff`.
     private var lastActivity = Date()
+    private var lastPadActivity: Date = .distantPast
     private var isDark = false
     private var statusAskedAt: Date = .distantPast
     private var lastStatusLog: String?
     private var runningShow: String?
+    private var showTask: Task<Void, Never>?
+    private var showSessionID: String?
 
 
     /// While absent, a reconnect should be noticed in about this long.
@@ -1975,13 +1978,16 @@ final class BoardController: ObservableObject {
         // Known, not only on a key: one waiting off the board that turns orange still laps
         // the ring, or it would be an orange nobody can see.
         let current = registry.known(forSession: sessionID)?.state
-        if current != previous { lastActivity = Date() }
+        if current != previous {
+            lastActivity = Date()
+            if showSessionID == sessionID { stopShow() }
+        }
         guard let name = Laps.show(
             from: previous, to: current, settings: model.preferences.ambient
         ) else { return }
         guard let show = Shows.show(named: name) else { return }
         Log.write("lap \(name): \(previous?.rawValue ?? "none") -> \(current?.rawValue ?? "none")")
-        play(show: show)
+        play(show: show, sessionID: sessionID)
     }
 
     /// The tty of a live process, so a key can raise the right tab later. Captured at
@@ -2267,7 +2273,7 @@ final class BoardController: ObservableObject {
             //
             // Only when it changed, or every 30s in case another app took it: each send
             // restarts the ring's animation.
-            if Date() >= ringBusyUntil {
+            if runningShow == nil, Date() >= ringBusyUntil {
                 let ring = CodexProtocol.LightingConfig(keys: .off, ambient: dark ? .off : ambientSide())
                 if ring != lastRing || Date().timeIntervalSince(lastRingAt) > 30 {
                     batch.append(device.prepare(lighting: ring))
@@ -2358,8 +2364,16 @@ final class BoardController: ObservableObject {
 
     /// Any press wakes a dark pad, and still does its job.
     private func noteActivity() {
-        lastActivity = Date()
-        if isDark { Task { await paint() } }
+        let now = Date()
+        // Firmware sleep need not disconnect HID. The first input after a gap
+        // repairs its ring without restarting the animation on every press.
+        let resync = isDark || now.timeIntervalSince(lastPadActivity) >= 10
+        lastPadActivity = now
+        lastActivity = now
+        if resync {
+            lastRing = nil
+            Task { await paint() }
+        }
     }
 
     private func apply(_ status: PadStatus) {
@@ -2422,7 +2436,7 @@ final class BoardController: ObservableObject {
         ringBusyUntil = Date().addingTimeInterval(400)
     }
 
-    func play(show: Show) {
+    func play(show: Show, sessionID: String? = nil) {
         guard runningShow == nil else {
             Log.write("show \(show.name): ignored, \(runningShow ?? "another") is playing")
             return
@@ -2430,27 +2444,38 @@ final class BoardController: ObservableObject {
         guard deviceIsOpen else { return }
 
         runningShow = show.name
+        showSessionID = sessionID
         model.runningShow = show.name
         lastRing = nil
         ringBusyUntil = Date().addingTimeInterval(show.duration.seconds + 0.8)
         Log.write("show \(show.name): starting (\(Int(show.duration.seconds * 1000))ms)")
 
-        Task { [weak self] in
+        let previousShow = showTask
+        showTask = Task { [weak self] in
+            // Let any cancelled write finish before a replacement takes the ring.
+            await previousShow?.value
             guard let self else { return }
             for step in show.steps {
-                guard self.runningShow == show.name else { break }
+                guard !Task.isCancelled else { return }
                 // Asserted once, then left alone for the step's duration.
                 try? await self.device.send(
                     lighting: CodexProtocol.LightingConfig(keys: .off, ambient: step.side)
                 )
+                // A cancelled send may already have been waiting for the HID lock.
+                // Repair it after it lands, without clearing a replacement show.
+                guard !Task.isCancelled else {
+                    self.lastRing = nil
+                    await self.paint()
+                    return
+                }
                 try? await Task.sleep(for: .milliseconds(step.milliseconds))
             }
-            // Hand the ring back rather than leaving whatever the last step wrote.
-            try? await self.device.send(
-                lighting: CodexProtocol.LightingConfig(keys: .off, ambient: .off)
-            )
+            guard !Task.isCancelled else { return }
+            // Paint the current state when the show hands the ring back.
             self.lastRing = nil
             self.runningShow = nil
+            self.showSessionID = nil
+            self.showTask = nil
             self.model.runningShow = nil
             self.ringBusyUntil = .distantPast
             Log.write("show \(show.name): done")
@@ -2462,8 +2487,13 @@ final class BoardController: ObservableObject {
     func jumpFromUI(_ slot: Int) { jump(to: slot) }
 
     func stopShow() {
+        showTask?.cancel()
         runningShow = nil
+        showSessionID = nil
+        model.runningShow = nil
         ringBusyUntil = .distantPast
+        lastRing = nil
+        Task { await paint() }
     }
 
     /**
