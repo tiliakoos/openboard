@@ -2624,8 +2624,7 @@ final class BoardController: ObservableObject {
         let hidden = known.union(dismissedListed)
         // A desktop chat's `claude` session id can change under it; the app's own id cannot.
         let knownChats = Set(registry.allEntries.compactMap(\.claudeDesktopSession))
-        var rows: [(view: SlotView, state: SessionState, at: Date)] = registry.waiting
-            .filter { !$0.dismissed && SessionRegistry.isWorthListing($0.state, since: $0.updatedAt, now: now) }
+        var rows: [(view: SlotView, state: SessionState, at: Date)] = registry.listedWaiting(now: now)
             .map { (view(of: $0, slot: 0), $0.state, $0.updatedAt) }
         for thread in t3Listed where !hidden.contains(thread.sessionID) {
             let state = EventMapper.state(for: thread.phase.eventName) ?? .idle

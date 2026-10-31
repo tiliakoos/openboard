@@ -270,6 +270,27 @@ func runWaitingTests() {
         expect(!worth(.idle, 0), "idle is not active")
     }
 
+    test("a session taken off by hand stays listed, however long ago it finished") {
+        // The failure: a green from eight hours earlier, taken off, vanished — listed
+        // nowhere, so there was no way to put it back.
+        var registry = SessionRegistry()
+        _ = registry.claim(sessionID: "old-green", state: .done, now: start, isAlive: alwaysAlive)
+        registry.bench(sessionID: "old-green")
+        let later = start.addingTimeInterval(8 * 60 * minute)
+        expectEqual(registry.listedWaiting(now: later).map(\.sessionID), ["old-green"])
+        expect(registry.rebalance(now: later, isAlive: alwaysAlive).isEmpty, "listed, still not put back by itself")
+
+        registry.dismiss(sessionID: "old-green")
+        expect(registry.listedWaiting(now: later).isEmpty, "dismissing still hides it")
+    }
+
+    test("a waiting session nobody took off still ages out of the list") {
+        var registry = busyBoard()
+        _ = registry.claim(sessionID: "stale-green", state: .done, now: start, isAlive: alwaysAlive)
+        expectEqual(registry.listedWaiting(now: start.addingTimeInterval(29 * minute)).map(\.sessionID), ["stale-green"])
+        expect(registry.listedWaiting(now: start.addingTimeInterval(31 * minute)).isEmpty)
+    }
+
     test("a freed key is not given to a session that finished long ago") {
         var registry = busyBoard()
         _ = registry.claim(sessionID: "stale-green", state: .done, now: start, isAlive: alwaysAlive)

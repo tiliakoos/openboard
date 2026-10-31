@@ -126,6 +126,17 @@ public struct SessionRegistry: Sendable, Equatable {
         }
     }
 
+    /**
+     The waiting sessions the off-board list shows: those worth listing, and every one
+     taken off by hand however long ago it finished — the list is its only way back onto
+     a key. Dismissed ones are hidden.
+     */
+    public func listedWaiting(now: Date = Date()) -> [Entry] {
+        waiting.filter {
+            !$0.dismissed && ($0.held || Self.isWorthListing($0.state, since: $0.updatedAt, now: now))
+        }
+    }
+
     /// Whether a change of state brings a dismissed session back: a new turn, or a
     /// question for you. Finishing the turn you dismissed it during does not.
     static func wakes(from old: SessionState, to new: SessionState) -> Bool {

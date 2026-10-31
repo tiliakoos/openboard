@@ -256,8 +256,9 @@ struct PopoverView: View {
 
     /**
      Every active session without a key, across every harness: running, asking for you,
-     or finished in the last half hour (`SessionRegistry.isWorthListing`) — those waiting
-     for a key, and those only seen listed. Put one on a key from here, and whatever held
+     or finished in the last half hour (`SessionRegistry.isWorthListing`), plus any taken
+     off by hand (`SessionRegistry.listedWaiting`) — those waiting for a key, and those only
+     seen listed. Put one on a key from here, and whatever held
      the key comes off; or dismiss it until its next turn.
 
      The one ScrollView in this window, and given an explicit height for exactly the reason
