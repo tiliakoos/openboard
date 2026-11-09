@@ -66,6 +66,8 @@ Keep this list current — it is what makes upstream diffs tractable.
   their multi-report HID messages can interleave mid-message. Do not "fix" this to a project-specific
   path.
 - Error strings referencing `setmicrolight` renamed for this project's diagnostics.
+- HID repaint batches may stop between acknowledgements when dictation changes,
+  allowing the next repaint to update the ring promptly under the same shared lock.
 - Reimplemented in Swift: IOKit directly rather than a native node binding, `async` writes, and
   typed errors. The wire format is byte-identical.
 

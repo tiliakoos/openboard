@@ -6,6 +6,8 @@ public enum VoiceTracking: String, Sendable, Equatable, CaseIterable {
     case mic
     /// Spin from the press until the next press; ignore mic stop in between.
     case session
+    /// Follow Handy's input activity, including dictation started on the keyboard.
+    case handy
 }
 
 /**
@@ -63,9 +65,12 @@ public struct VoiceSignal: Sendable, Equatable {
         self.limit = limit
     }
 
-    public func isActive(now: Date = Date()) -> Bool {
+    public func isActive(now: Date = Date(), handyRunning: Bool = false) -> Bool {
+        if handyRunning { return true }
         guard let since else { return false }
         switch tracking {
+        case .handy:
+            return false
         case .session:
             return true
         case .mic:

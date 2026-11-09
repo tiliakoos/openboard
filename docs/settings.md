@@ -42,7 +42,9 @@ the pad key taps the chord or holds it down for as long as you hold the key, whi
 push-to-talk hotkey wants to be driven; the dial and the joystick only tap. Mark a shortcut
 as dictation, or bind a built-in voice action, and choose how the ring tracks: **Follow
 the mic** spins while the system mic is active; **Until next press** stays on from one
-press until you press again. Both are gated by Colors → Spin while dictating.
+press until you press again. **Follow Handy** follows Handy's own microphone input,
+including dictation started or stopped from the keyboard (macOS 14.2+). Handy's
+always-on microphone must be disabled. All are gated by Colors → Spin while dictating.
 
 ## Colors — states, laps and shows
 

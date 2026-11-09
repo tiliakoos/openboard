@@ -13,6 +13,19 @@ import OpenBoardKit
 func runVoiceSignalTests() {
     let t0 = Date(timeIntervalSinceReferenceDate: 1_000_000)
 
+    test("Handy activity follows keyboard starts and stops without latching on pad presses") {
+        var signal = VoiceSignal()
+        expect(signal.isActive(now: t0, handyRunning: true))
+        expect(!signal.isActive(now: t0, handyRunning: false))
+        signal.begin(now: t0, tracking: .handy)
+        _ = signal.micChanged(running: true, now: t0)
+        expect(!signal.isActive(now: t0, handyRunning: false))
+        expect(signal.isActive(now: t0.addingTimeInterval(200), handyRunning: true))
+        signal.end()
+        expect(signal.isActive(now: t0, handyRunning: true))
+        expect(!signal.isActive(now: t0, handyRunning: false))
+    }
+
     test("a fresh belief is dark — a request is not a recording") {
         var signal = VoiceSignal()
         signal.begin(now: t0)

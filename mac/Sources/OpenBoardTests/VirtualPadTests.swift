@@ -118,6 +118,25 @@ func runVirtualPadTests() async {
         expect(face.threads[1] == nil)
     }
 
+    final class RepaintGate: @unchecked Sendable {
+        private let lock = NSLock()
+        private var remaining = 1
+        func isCurrent() -> Bool {
+            lock.lock()
+            defer { remaining -= 1; lock.unlock() }
+            return remaining > 0
+        }
+    }
+    let gate = RepaintGate()
+    let acknowledgementsBefore = collected.allLines.count
+    try? await pad.write(batch: [
+        pad.prepare(lighting: .init(keys: .off, ambient: .off)),
+        pad.prepare(threads: [state].compactMap { $0 }),
+    ], whileCurrent: { gate.isCurrent() })
+    test("a stale repaint stops before sending the rest of its batch") {
+        expectEqual(collected.allLines.count - acknowledgementsBefore, 1)
+    }
+
     test("a virtual key press parses as a real one") {
         let events = Collected()
         pad.onLine { data in

@@ -20,8 +20,18 @@ public protocol PadTransport: AnyObject, Sendable {
     func prepare(threads: [CodexProtocol.ThreadState]) -> [Data]
     func prepare(lighting: CodexProtocol.LightingConfig) -> [Data]
     func write(batch: [[Data]]) async throws
+    func write(batch: [[Data]], whileCurrent: @escaping @Sendable () async -> Bool) async throws
     func send(threads: [CodexProtocol.ThreadState]) async throws
     func send(lighting: CodexProtocol.LightingConfig) async throws
 }
 
 extension HIDDevice: PadTransport {}
+
+extension PadTransport {
+    public func write(batch: [[Data]], whileCurrent: @escaping @Sendable () async -> Bool) async throws {
+        for reports in batch {
+            guard await whileCurrent() else { break }
+            try await write(batch: [reports])
+        }
+    }
+}

@@ -137,6 +137,12 @@ final class BoardController: ObservableObject {
      */
     private var voice = VoiceSignal()
     private let micActivity = MicActivity()
+    private let handyActivity = HandyActivity()
+    private var handyRunning = false
+    private var followsHandy: Bool {
+        model.preferences.voiceTracking == .handy
+            || model.preferences.shortcuts.values.contains { $0.voice && $0.voiceTracking == .handy }
+    }
     /// Sweeps a belief whose grace window expired with the mic never starting — the
     /// tap typed a space. Nothing was lit, so this is bookkeeping, not a repaint.
     private var voiceGraceTask: Task<Void, Never>?
@@ -146,7 +152,7 @@ final class BoardController: ObservableObject {
         // The hold says so itself: looking its key up in the actions map instead
         // missed the long-press keys, whose "ENC.long" is not a key the map has.
         if pushToTalk.isDictation { return true }
-        return voice.isActive()
+        return voice.isActive(handyRunning: followsHandy && handyRunning)
     }
 
     /// A hold the pad never released. The belief a voice shortcut's press started has
@@ -175,7 +181,7 @@ final class BoardController: ObservableObject {
                         ? "voice: on (\(why), mic already running)"
                         : "voice: believed (\(why)) — awaiting mic"
                 )
-            } else {
+            } else if tracking == .session {
                 Log.write("voice: on (\(why), session)")
             }
         } else {
@@ -495,6 +501,14 @@ final class BoardController: ObservableObject {
         startFocusWatcher()
         startKeyInterception()
         startMicWatcher()
+        handyActivity.watch { [weak self] running in
+            guard let self else { return }
+            let was = self.voiceIsActive
+            self.handyRunning = running
+            guard was != self.voiceIsActive else { return }
+            Log.write("voice: \(running ? "on" : "off") (Handy input)")
+            Task { await self.paint() }
+        }
         startHookServer()
         startResident()
         startT3()
@@ -1258,6 +1272,7 @@ final class BoardController: ObservableObject {
         // Before anything else: a key left logically down outlives this process and
         // corrupts every keystroke on the machine afterwards.
         pushToTalk.releaseIfHeld()
+        handyActivity.stop()
         focusWatcher?.stop()
         // The board survives a restart. Saved on the way out *and* after every change,
         // because a crash never reaches this line.
@@ -2310,7 +2325,15 @@ final class BoardController: ObservableObject {
                 written += 1
             }
 
-            try await device.write(batch: batch)
+            let voiceAtPaint = voiceIsActive
+            try await device.write(batch: batch, whileCurrent: { @MainActor [weak self] in
+                guard let self else { return false }
+                guard self.voiceIsActive == voiceAtPaint else {
+                    self.repaintWanted = true
+                    return false
+                }
+                return true
+            })
             painted = (written, skipped)
         } catch {
             // Never throw out of the loop: a failed repaint is a missed light, but a

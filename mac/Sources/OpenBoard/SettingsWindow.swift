@@ -758,11 +758,12 @@ struct CapInspector: View {
                 .foregroundStyle(.tertiary)
             Picker("", selection: binding) {
                 Text("Follow the mic").tag(VoiceTracking.mic)
+                Text("Follow Handy").tag(VoiceTracking.handy)
                 Text("Until next press").tag(VoiceTracking.session)
             }
             .labelsHidden()
             .pickerStyle(.segmented)
-            Text("Follow the mic spins while the system mic is active. Until next press stays on from this press until you press again.")
+            Text("Follow Handy tracks Handy even when started or stopped from the keyboard (macOS 14.2+; Handy’s always-on microphone must be off). Follow the mic tracks the system mic after a pad press. Until next press stays on until you press again.")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

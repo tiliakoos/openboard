@@ -392,11 +392,18 @@ public final class HIDDevice: @unchecked Sendable {
      regardless. A repaint is one logical operation and should hold the lock once.
      */
     public func write(batch: [[Data]]) async throws {
+        try await write(batch: batch, whileCurrent: { true })
+    }
+
+    /// Stop a stale repaint between acknowledgements so a voice transition can
+    /// repaint the ring next, while retaining one lock for the entire batch.
+    public func write(batch: [[Data]], whileCurrent: @escaping @Sendable () async -> Bool) async throws {
         guard let device else { throw CodexError.notConnected }
         // Short timeout, then give up. Upstream waits 20s; a wedged RPC must not stall
         // a repaint that is only ever cosmetic.
         try await HIDWriteLock.shared.withLock(timeout: 3) {
             for reports in batch {
+                guard await whileCurrent() else { break }
                 try await sendAndAwaitAck(reports, to: device)
             }
         }
