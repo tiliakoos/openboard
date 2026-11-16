@@ -207,6 +207,17 @@ public enum CodexProtocol {
         case rgbConfig = "v.oai.rgbcfg"
     }
 
+    private static let idLock = NSLock()
+    nonisolated(unsafe) private static var lastID = 0
+
+    /// Request ids in order, 1…999. Drawn at random, a reply arriving after its wait gave
+    /// up could complete a later request that happened to draw the same id, unpacing it.
+    public static func nextRequestID() -> Int {
+        idLock.lock(); defer { idLock.unlock() }
+        lastID = lastID % 999 + 1
+        return lastID
+    }
+
     /// Chunk an encoded request into output reports.
     ///
     /// The report id is byte 0 of the buffer here, matching the Node version. IOKit's

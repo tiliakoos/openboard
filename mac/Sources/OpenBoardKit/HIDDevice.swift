@@ -372,7 +372,7 @@ public final class HIDDevice: @unchecked Sendable {
         let params = "[" + threads.map(\.json).joined(separator: ",") + "]"
         return CodexProtocol.frame(
             CodexProtocol.requestJSON(
-                method: .threadStatus, params: params, id: Int.random(in: 0..<1000)
+                method: .threadStatus, params: params, id: CodexProtocol.nextRequestID()
             )
         )
     }
@@ -381,7 +381,7 @@ public final class HIDDevice: @unchecked Sendable {
     public func prepare(lighting: CodexProtocol.LightingConfig) -> [Data] {
         CodexProtocol.frame(
             CodexProtocol.requestJSON(
-                method: .rgbConfig, params: lighting.json, id: Int.random(in: 0..<1000)
+                method: .rgbConfig, params: lighting.json, id: CodexProtocol.nextRequestID()
             )
         )
     }

@@ -2493,7 +2493,7 @@ final class BoardController: ObservableObject {
         guard deviceIsOpen, Date().timeIntervalSince(statusAskedAt) >= 60 else { return }
         statusAskedAt = Date()
         let request = CodexProtocol.requestJSON(
-            methodName: PadStatus.method, params: "{}", id: Int.random(in: 0..<1000)
+            methodName: PadStatus.method, params: "{}", id: CodexProtocol.nextRequestID()
         )
         try? await device.write(batch: [CodexProtocol.frame(request)])
     }

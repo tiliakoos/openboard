@@ -451,6 +451,14 @@ func runWriteShapeTests() {
         )
     }
 
+    test("request ids run in order and stay within 1…999") {
+        let ids = (0..<2000).map { _ in CodexProtocol.nextRequestID() }
+        expect(ids.allSatisfy { (1...999).contains($0) }, "every id in range")
+        // In order: a late reply cannot match the next request, only one 999 later.
+        let steps = zip(ids, ids.dropFirst()).map { $1 == $0 % 999 + 1 }
+        expect(steps.allSatisfy { $0 }, "each id follows the last, wrapping 999 to 1")
+    }
+
     test("numbers are formatted the way JSON.stringify does") {
         // Integral values without a decimal point, matching the bytes known to work.
         expectEqual(CodexProtocol.number(1), "1")
