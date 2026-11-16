@@ -1715,8 +1715,16 @@ final class BoardController: ObservableObject {
         // ppid is a shell or claude itself, and the claude ancestor's pid is what
         // Terminal's per-tab tty match needs. Without this fallback, every hook
         // arrives with pid=nil and every "jump to slot N" reports noWindow.
+        // A known session's live pid is reused: the walk is a `ps` per ancestor, on the
+        // main actor, on every hook — and hooks fire several times a minute per session.
+        let known = registry.known(forSession: sessionID)
         let hookPID = event.environment["CLAUDE_PID"].flatMap(Int.init)
+            ?? known?.pid.flatMap { SessionRegistry.processIsAlive($0) ? $0 : nil }
             ?? event.hookPPID.flatMap(Self.claudePID(fromAncestryOf:))
+        // Likewise the tty — another `ps`, with no timeout — while the process is the same.
+        let hookTTY = hookPID == known?.pid && known?.tty != nil
+            ? known?.tty
+            : hookPID.flatMap(Self.tty(forPID:))
 
         /*
          A surface the board is not listening to gets no key, and neither does a
@@ -1769,7 +1777,7 @@ final class BoardController: ObservableObject {
         if registry.adoptRealSessionID(
             sessionID,
             pid: hookPID,
-            tty: hookPID.flatMap(Self.tty(forPID:)),
+            tty: hookTTY,
             cwd: event.cwd,
             transcriptPath: event.transcriptPath ?? SessionTranscript.locate(sessionID: sessionID),
             entrypoint: event.entrypoint
@@ -1794,7 +1802,7 @@ final class BoardController: ObservableObject {
                 sessionID: sessionID,
                 cwd: event.cwd,
                 pid: hookPID,
-                tty: hookPID.flatMap(Self.tty(forPID:)),
+                tty: hookTTY,
                 transcriptPath: event.transcriptPath
                     ?? SessionTranscript.locate(sessionID: sessionID),
                 entrypoint: event.entrypoint,
@@ -1828,7 +1836,7 @@ final class BoardController: ObservableObject {
             cwd: event.cwd,
             transcriptPath: transcript,
             entrypoint: event.entrypoint,
-            tty: hookPID.flatMap(Self.tty(forPID:)),
+            tty: hookTTY,
             pid: hookPID,
             claudeDesktopSession: desktopSession
         ) {
@@ -1850,7 +1858,7 @@ final class BoardController: ObservableObject {
                 sessionID: sessionID,
                 cwd: event.cwd,
                 pid: hookPID,
-                tty: hookPID.flatMap(Self.tty(forPID:)),
+                tty: hookTTY,
                 transcriptPath: event.transcriptPath
                     ?? SessionTranscript.locate(sessionID: sessionID),
                 entrypoint: event.entrypoint,
