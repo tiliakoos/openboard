@@ -1401,6 +1401,21 @@ final class BoardController: ObservableObject {
         for emission in emissions {
             await handle(HookServer.Event(raw: emission.payload))
         }
+        // Released directly rather than as an event: an event muted in the pane is the
+        // likeliest way the original release was lost, and it would be refused again.
+        if case .connected = status {
+            let orphans = t3.orphaned(registry.allEntries.map(\.sessionID))
+            for sessionID in orphans {
+                registry.release(sessionID: sessionID)
+                Log.write("t3: released \(sessionID.prefix(8)) — its thread is no longer tracked")
+                if showSessionID == sessionID { stopShow() }
+            }
+            if !orphans.isEmpty {
+                rebalanceBoard()
+                titlesChanged = true
+                Task { await paint() }
+            }
+        }
         if titlesChanged { publish() }
         if promptSubmitted, voiceIsActive {
             setVoice(false, why: "prompt submitted (T3)")

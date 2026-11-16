@@ -397,6 +397,22 @@ public enum T3Code {
         }
 
         /**
+         Thread sessions the board holds that this no longer tracks.
+
+         A key is freed by the one `t3_released` a diff emits as it stops tracking a
+         thread. If that event is lost — muted in the pane, or dropped before it lands —
+         nothing emits again, and a thread row has no pid for `prune` to find dead: the
+         key held its last color until the board was reset. Checked after each snapshot,
+         so a lost release costs one poll.
+         */
+        public func orphaned(_ sessionIDs: [String]) -> [String] {
+            guard primed else { return [] }
+            return sessionIDs.filter { session in
+                T3Code.threadID(fromSession: session).map { tracked[$0] == nil } ?? false
+            }
+        }
+
+        /**
          The server could not be read: not running, refused, or a body that did not
          decode.
 

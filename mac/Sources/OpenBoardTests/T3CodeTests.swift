@@ -240,6 +240,23 @@ func runT3CodeTests() {
         expectEqual(state.trackedCount, 1)
     }
 
+    test("a key whose thread is no longer tracked is found, so a lost release heals") {
+        var state = T3Code.State()
+        let board = ["t3:a", "t3:b", "cli-session", "cursor:c"]
+        expectEqual(state.orphaned(board), [], "nothing is judged before the first snapshot")
+        _ = state.apply(try snapshot([thread("a", ["status": "running"])]), now: now)
+        expectEqual(state.orphaned(board), ["t3:b"], "only thread rows, and only untracked ones")
+        // Settled: the diff stops tracking it and emits a release. If that release never
+        // lands, the next check still names the key.
+        _ = state.apply(try snapshot([thread("a", ["status": "running", "settledOverride": "settled"])]), now: now)
+        expectEqual(state.orphaned(board), ["t3:a", "t3:b"])
+        // One put on a key by hand is tracked from then on, so it is never swept.
+        state = T3Code.State()
+        _ = state.apply(try snapshot([thread("d", ["status": "completed"])]), now: now)
+        _ = state.track(sessionID: "t3:d")
+        expectEqual(state.orphaned(["t3:d"]), [])
+    }
+
     test("a sent message is noticed in any thread, but not on the first look") {
         var state = T3Code.State()
         let first = state.apply(try snapshot([
