@@ -2186,6 +2186,9 @@ final class BoardController: ObservableObject {
         }
         if !deviceIsOpen {
             await reopen()
+            // A handle dropped after a failed write comes back here. Paint now, or the
+            // board stays wrong for another full resident interval.
+            if deviceIsOpen { await paint() }
         }
         if deviceIsOpen {
             model.apply(device: .ready)
@@ -2380,6 +2383,8 @@ final class BoardController: ObservableObject {
                 guard let self else { return false }
                 guard self.voiceIsActive == voiceAtPaint else {
                     self.repaintWanted = true
+                    // The ring frame may not have gone out; the cache must not say it did.
+                    self.lastRing = nil
                     return false
                 }
                 return true
@@ -2402,6 +2407,16 @@ final class BoardController: ObservableObject {
                 }
             }
             lastPaintLog = Log.changed("paint", last: lastPaintLog, to: "FAILED — \(failure)")
+            // Recorded before the write, so after a failure it names a ring the pad may
+            // never have received — and would suppress resending it for 30s.
+            lastRing = nil
+            // Another writer holding the lock says nothing about this handle. Try again
+            // rather than dropping a working connection and waiting out two resident ticks.
+            // Only `busy`: it waited its timeout first, so retrying cannot spin.
+            if case HIDWriteLock.LockError.busy = error {
+                repaintWanted = true
+                return
+            }
             /*
              A failed write means this handle is dead, whatever the survey says.
 
