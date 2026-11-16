@@ -969,6 +969,7 @@ final class BoardController: ObservableObject {
             SessionTitle.forget(transcriptPath: entry.transcriptPath)
             registry.release(sessionID: entry.sessionID)
             Log.write("released \(Self.place(entry)) (\(entry.sessionID.prefix(8))) — archived in the Claude app")
+            if showSessionID == entry.sessionID { stopShow() }
         }
         rebalanceBoard()
         publish()
@@ -1667,6 +1668,9 @@ final class BoardController: ObservableObject {
                 SessionTitle.forget(transcriptPath: entry.transcriptPath)
                 registry.release(sessionID: sessionID)
                 Log.write("hook \(event.name): released \(Self.place(entry)) (\(sessionID.prefix(8)))")
+                // Settling a thread mid-lap is having seen it. Left running, the lap held
+                // the ring green over whatever session shifted onto the freed key.
+                if showSessionID == sessionID { stopShow() }
                 // Not refilled at once after `/clear`: it ends a session and starts its
                 // successor in the same tab a moment later, and that successor — idle, so
                 // unable to displace anyone — must find the key still free. Anything else
@@ -2556,6 +2560,7 @@ final class BoardController: ObservableObject {
     func jumpFromUI(_ slot: Int) { jump(to: slot) }
 
     func stopShow() {
+        if let runningShow { Log.write("show \(runningShow): stopped") }
         showTask?.cancel()
         runningShow = nil
         showSessionID = nil
