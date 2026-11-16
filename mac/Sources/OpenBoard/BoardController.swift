@@ -1370,10 +1370,17 @@ final class BoardController: ObservableObject {
             status = why
             reason = detail
         case .timedOut:
-            // Keys wait out the same grace as for a server that is down.
-            emissions = t3.serverLost(now: Date())
-            status = .serverDown
-            reason = "shell request timed out"
+            // The pid was alive when this request was sent. A snapshot that misses
+            // its deadline is a busy server, not a relaunch: `serverLost` would give
+            // the keys up after a minute and blank the board while T3 is busiest.
+            // Hold the last snapshot. Two seconds, not fifteen — a long backoff is
+            // what left a settled key lit after the server had already answered.
+            let held = t3.trackedCount
+            lastT3Log = Log.changed(
+                "t3", last: lastT3Log,
+                to: "busy — shell request timed out, holding \(held) thread\(held == 1 ? "" : "s")"
+            )
+            return .seconds(2)
         }
 
         model.apply(t3Status: status)
@@ -1392,8 +1399,6 @@ final class BoardController: ObservableObject {
         if promptSubmitted, voiceIsActive {
             setVoice(false, why: "prompt submitted (T3)")
         }
-        // Backing off from a busy server is what held a settled thread's key for 15s.
-        if case .timedOut = result { return .milliseconds(1500) }
         switch status {
         case .connected: return .milliseconds(1500)
         case .noToken, .serverDown: return .seconds(5)

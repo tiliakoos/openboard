@@ -19,8 +19,9 @@ actor T3Client {
         /// answering, or answering with something that does not decode — the reason is
         /// kept for the log.
         case unavailable(T3Code.Status, reason: String? = nil)
-        /// The server is there but did not answer in time: busy, typically starting a
-        /// thread. Unlike down, worth asking again at the usual pace.
+        /// The server is there but did not answer in time. The pid was alive when
+        /// the request was sent, so this is a busy server, not a relaunch. The
+        /// controller holds its last snapshot and tries again.
         case timedOut
     }
 
@@ -31,7 +32,11 @@ actor T3Client {
 
     init() {
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 2
+        // Ten seconds to the first byte. The snapshot is the whole thread list,
+        // and a busy T3 often takes longer than two seconds to start sending it.
+        // Two seconds cancelled the request, and the retry piled more of the same
+        // work on the server. Idle, this returns in well under a second.
+        configuration.timeoutIntervalForRequest = 10
         configuration.urlCache = nil
         session = URLSession(configuration: configuration)
     }
