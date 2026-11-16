@@ -2387,10 +2387,16 @@ final class BoardController: ObservableObject {
             //
             // Only when it changed, or every 30s in case another app took it: each send
             // restarts the ring's animation.
+            var ringFrame: [Data]?
+            var ringFirst = false
             if runningShow == nil, Date() >= ringBusyUntil {
                 let ring = CodexProtocol.LightingConfig(keys: .off, ambient: dark ? .off : ambientSide())
                 if ring != lastRing || Date().timeIntervalSince(lastRingAt) > 30 {
-                    batch.append(device.prepare(lighting: ring))
+                    ringFrame = device.prepare(lighting: ring)
+                    // After a reconnect, a wake or another writer the backlight may be on
+                    // and burying the keys until this lands, so it goes first. Otherwise
+                    // the key that changed does: the ring is three reports, ~0.8s.
+                    ringFirst = lastRing == nil
                     lastRing = ring
                     lastRingAt = Date()
                 }
@@ -2439,6 +2445,9 @@ final class BoardController: ObservableObject {
                 if !changed.isEmpty { batch.append(device.prepare(threads: changed)) }
             } else {
                 batch += changed.map { device.prepare(threads: [$0]) }
+            }
+            if let ringFrame {
+                if ringFirst { batch.insert(ringFrame, at: 0) } else { batch.append(ringFrame) }
             }
 
             let voiceAtPaint = voiceIsActive
