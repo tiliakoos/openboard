@@ -229,6 +229,7 @@ final class BoardController: ObservableObject {
     /// the pad and reconnecting still force a full write.
     private static let fullKeyInterval: TimeInterval = 30
     private var batchAborted = false
+    private var retriedTimeout = false
     /// Last pad input or status change. See `AutoOff`.
     private var lastActivity = Date()
     private var lastPadActivity: Date = .distantPast
@@ -1755,7 +1756,9 @@ final class BoardController: ObservableObject {
         // arrives with pid=nil and every "jump to slot N" reports noWindow.
         // A known session's live pid is reused: the walk is a `ps` per ancestor, on the
         // main actor, on every hook — and hooks fire several times a minute per session.
-        let known = registry.known(forSession: sessionID)
+        // Not on `SessionStart`: a resume can bring the session up in another tab, and a
+        // zombie or a reused pid still answers `kill(pid, 0)` — the old tty would stick.
+        let known = event.name == "SessionStart" ? nil : registry.known(forSession: sessionID)
         let hookPID = event.environment["CLAUDE_PID"].flatMap(Int.init)
             ?? known?.pid.flatMap { SessionRegistry.processIsAlive($0) ? $0 : nil }
             ?? event.hookPPID.flatMap(Self.claudePID(fromAncestryOf:))
@@ -2452,6 +2455,7 @@ final class BoardController: ObservableObject {
 
             let voiceAtPaint = voiceIsActive
             batchAborted = false
+            let timeoutsBefore = device.ackStats.timedOut
             let started = ContinuousClock.now
             defer {
                 paintTimings.append(ContinuousClock.now - started)
@@ -2470,7 +2474,18 @@ final class BoardController: ObservableObject {
             })
             if batchAborted {
                 lastKeys = [:]
+            } else if device.ackStats.timedOut > timeoutsBefore {
+                // A timed-out acknowledgement resumes as success, but nothing says that
+                // message landed. Send this paint's keys and ring again rather than
+                // trusting them until the next full write. Over-counts if a lap's write
+                // timed out meanwhile, which costs one extra paint.
+                lastRing = nil
+                // Once at once; a pad that keeps not answering is retried by the
+                // resident loop, not in a tight loop of 600ms waits.
+                if !retriedTimeout { repaintWanted = true }
+                retriedTimeout = true
             } else {
+                retriedTimeout = false
                 for thread in changed { lastKeys[thread.id] = thread }
                 if full { lastFullKeys = Date() }
             }
