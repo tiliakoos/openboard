@@ -215,6 +215,14 @@ final class BoardController: ObservableObject {
     /// What `paint` last sent the ring. Cleared by anything else that writes it.
     private var lastRing: CodexProtocol.LightingConfig?
     private var lastRingAt: Date = .distantPast
+    /// What `paint` last got onto each key, by firmware slot id. Emptied by anything else
+    /// that writes the keys, and by any write that may not have landed.
+    private var lastKeys: [Int: CodexProtocol.ThreadState] = [:]
+    private var lastFullKeys: Date = .distantPast
+    /// Every key is rewritten at least this often, changed or not: it is what repairs a
+    /// key the ChatGPT app painted over, which nothing here can read back.
+    private static let fullKeyInterval: TimeInterval = 9
+    private var batchAborted = false
     /// Last pad input or status change. See `AutoOff`.
     private var lastActivity = Date()
     private var lastPadActivity: Date = .distantPast
@@ -275,6 +283,7 @@ final class BoardController: ObservableObject {
         let calibration = model.calibration
         let appearance = model.appearances[state] ?? state.defaultAppearance
         lastRing = nil
+        lastKeys = [:]
 
         Task { [weak self] in
             guard let self else { return }
@@ -296,7 +305,9 @@ final class BoardController: ObservableObject {
             try? await self.device.write(batch: batch)
             Log.write("preview: \(state.rawValue)")
             try? await Task.sleep(for: .seconds(2))
-            // Always hand the board back, or the preview becomes the board.
+            // Always hand the board back, or the preview becomes the board. A paint that
+            // landed during the preview recorded keys the preview then painted over.
+            self.lastKeys = [:]
             await self.paint()
         }
     }
@@ -321,6 +332,7 @@ final class BoardController: ObservableObject {
         guard deviceIsOpen else { return }
         calibrationTask?.cancel()
         lastRing = nil
+        lastKeys = [:]
         calibrationTask = Task { [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
@@ -352,6 +364,7 @@ final class BoardController: ObservableObject {
     func endCalibrationCapture() {
         calibrationTask?.cancel()
         calibrationTask = nil
+        lastKeys = [:]
         Task { await paint() }
     }
 
@@ -1257,6 +1270,7 @@ final class BoardController: ObservableObject {
     /// Every key dark, without forgetting anything.
     private func allKeysOff() async {
         guard deviceIsOpen else { return }
+        lastKeys = [:]
         let calibration = model.calibration
         var batch: [[Data]] = []
         for slot in 1...BoardLayout.slotCount {
@@ -1268,6 +1282,7 @@ final class BoardController: ObservableObject {
             }
         }
         try? await device.write(batch: batch)
+        lastKeys = [:]
     }
 
     /// Release the socket and the device handle. Without this the socket file is left
@@ -2116,6 +2131,7 @@ final class BoardController: ObservableObject {
                     await self.paint()
                     try? await Task.sleep(for: .milliseconds(1500))
                     self.lastRing = nil
+                    self.lastKeys = [:]
                     await self.paint()
                 } else if present {
                     await self.paint()
@@ -2142,6 +2158,7 @@ final class BoardController: ObservableObject {
     private func reopen() async {
         closeDeviceSync()
         lastRing = nil
+        lastKeys = [:]
         do {
             try device.open()
             deviceIsOpen = true
@@ -2394,15 +2411,25 @@ final class BoardController: ObservableObject {
                 threads.append(thread)
                 written += 1
             }
+            /*
+             Only the keys that changed, between full writes.
+
+             Over Bluetooth each 64-byte report takes ~180ms to hand over, measured, and a
+             key is two reports: six keys cost ~2s where the one that went green costs
+             ~0.35s. Every key still goes out every `fullKeyInterval`.
+             */
+            let full = Date().timeIntervalSince(lastFullKeys) >= Self.fullKeyInterval
+            let changed = full ? threads : threads.filter { lastKeys[$0.id] != $0 }
             // The vendor's own SDK sends every slot in one call. Kept switchable: the pad
             // acknowledges a message it ignores, so only a look at it confirms the change.
             if model.preferences.batchedKeyWrites {
-                if !threads.isEmpty { batch.append(device.prepare(threads: threads)) }
+                if !changed.isEmpty { batch.append(device.prepare(threads: changed)) }
             } else {
-                batch += threads.map { device.prepare(threads: [$0]) }
+                batch += changed.map { device.prepare(threads: [$0]) }
             }
 
             let voiceAtPaint = voiceIsActive
+            batchAborted = false
             let started = ContinuousClock.now
             defer {
                 paintTimings.append(ContinuousClock.now - started)
@@ -2412,12 +2439,19 @@ final class BoardController: ObservableObject {
                 guard let self else { return false }
                 guard self.voiceIsActive == voiceAtPaint else {
                     self.repaintWanted = true
-                    // The ring frame may not have gone out; the cache must not say it did.
+                    // Part of the batch never went out; the caches must not say it did.
                     self.lastRing = nil
+                    self.batchAborted = true
                     return false
                 }
                 return true
             })
+            if batchAborted {
+                lastKeys = [:]
+            } else {
+                for thread in changed { lastKeys[thread.id] = thread }
+                if full { lastFullKeys = Date() }
+            }
             painted = (written, skipped)
         } catch {
             // Never throw out of the loop: a failed repaint is a missed light, but a
@@ -2439,6 +2473,7 @@ final class BoardController: ObservableObject {
             // Recorded before the write, so after a failure it names a ring the pad may
             // never have received — and would suppress resending it for 30s.
             lastRing = nil
+            lastKeys = [:]
             // Another writer holding the lock says nothing about this handle. Try again
             // rather than dropping a working connection and waiting out two resident ticks.
             // Only `busy`: it waited its timeout first, so retrying cannot spin.
@@ -2489,6 +2524,7 @@ final class BoardController: ObservableObject {
         lastActivity = now
         if resync {
             lastRing = nil
+            lastKeys = [:]
             Task { await paint() }
         }
     }
@@ -2541,6 +2577,7 @@ final class BoardController: ObservableObject {
                 self.countdown = nil
                 self.model.funModeRunning = false
                 self.ringBusyUntil = .distantPast
+                self.lastKeys = [:]
                 Task { await self.paint() }
             }
         )
@@ -2548,6 +2585,7 @@ final class BoardController: ObservableObject {
         countdown = player
         model.funModeRunning = true
         lastRing = nil
+        lastKeys = [:]
         // The ring belongs to the show for the duration; a status repaint mid-song
         // restarts the firmware's animation and reads as flicker.
         ringBusyUntil = Date().addingTimeInterval(400)

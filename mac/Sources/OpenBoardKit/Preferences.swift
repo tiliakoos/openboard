@@ -95,9 +95,9 @@ public struct Preferences: Equatable, Sendable {
     /// giving up on a prompt — a question with no good answer, about an event that
     /// should not happen. Off restores the old safety net at a fixed 15 minutes.
     public var holdAttention: Bool
-    /// Send all six keys in one `thstatus` message rather than one message per key, as
-    /// the ChatGPT app does. Over Bluetooth each message waits on a ~470ms
-    /// acknowledgement, which made per-key writes most of a repaint's time.
+    /// Send the keys a paint writes in one `thstatus` message rather than one per key, as
+    /// the ChatGPT app does. Saves the per-message envelope: over Bluetooth the cost is
+    /// ~180ms per 64-byte report, so a full board drops from 12 reports to about 9.
     public var batchedKeyWrites = false
     /// Idle seconds before every light goes off. 0 means never. See `AutoOff`.
     public var autoOffSeconds: Int
