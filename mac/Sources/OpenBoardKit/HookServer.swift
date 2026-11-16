@@ -186,6 +186,10 @@ public actor HookServer {
 
     private func serve(_ client: Int32) async {
         defer { close(client) }
+        // Connections are served one at a time, so a client that never sends EOF would
+        // hold every later hook. The helper writes and half-closes at once.
+        var timeout = timeval(tv_sec: 2, tv_usec: 0)
+        setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
 
         var data = Data()
         var buffer = [UInt8](repeating: 0, count: 8192)
