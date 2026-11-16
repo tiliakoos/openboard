@@ -1681,7 +1681,7 @@ final class BoardController: ObservableObject {
                     rebalanceBoard()
                 }
                 publish()
-                await paint()
+                Task { await paint() }
             }
             return
         }
@@ -1779,7 +1779,7 @@ final class BoardController: ObservableObject {
             rebalanceBoard()
             publish()
             fireLap(from: previousState, sessionID: sessionID)
-            await paint()
+            Task { await paint() }
             return
         }
 
@@ -1957,7 +1957,13 @@ final class BoardController: ObservableObject {
         rebalanceBoard()
         publish()
         fireLap(from: previousState, sessionID: sessionID)
-        await paint()
+        /*
+         Not awaited. Hooks are handled one at a time, so waiting on the pad here held
+         every later hook — the next `Stop` included — in the socket backlog for a whole
+         repaint (~3s over Bluetooth). `paint` coalesces: a repaint already in flight
+         gets one follow-up, which reads the registry as it is by then.
+         */
+        Task { await paint() }
     }
 
     /// Say where a claim landed — on a key, from whom, or nowhere. A key changing hands
