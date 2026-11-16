@@ -2610,8 +2610,20 @@ final class BoardController: ObservableObject {
             // Let any cancelled write finish before a replacement takes the ring.
             await previousShow?.value
             guard let self else { return }
-            for step in show.steps {
+            /*
+             On the clock, not one write per step.
+
+             A ring write is three reports, ~750ms over Bluetooth, and the fade's steps are
+             70ms apart: written in turn, a 5s lap took 15s. A step whose window passed
+             while an earlier write was landing is skipped — never the last, which is where
+             the show means to leave the ring.
+             */
+            let started = ContinuousClock.now
+            var elapsed = Duration.zero
+            for (index, step) in show.steps.enumerated() {
                 guard !Task.isCancelled else { return }
+                elapsed += .milliseconds(step.milliseconds)
+                if ContinuousClock.now - started >= elapsed, index < show.steps.count - 1 { continue }
                 // Asserted once, then left alone for the step's duration.
                 try? await self.device.send(
                     lighting: CodexProtocol.LightingConfig(keys: .off, ambient: step.side)
@@ -2623,7 +2635,7 @@ final class BoardController: ObservableObject {
                     await self.paint()
                     return
                 }
-                try? await Task.sleep(for: .milliseconds(step.milliseconds))
+                try? await Task.sleep(until: started + elapsed, clock: .continuous)
             }
             guard !Task.isCancelled else { return }
             // Paint the current state when the show hands the ring back.
