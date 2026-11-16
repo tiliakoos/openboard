@@ -224,6 +224,53 @@ do {
     exit(1)
 }
 
+/*
+ How long the pad takes to answer, by message shape.
+
+ Separates the two costs a repaint pays: per message (the acknowledgement round trip)
+ and per 64-byte report. Six keys in one message against six messages of one key is the
+ comparison that decides whether batching a repaint is worth it.
+ */
+if CommandLine.arguments.contains("--timing") {
+    func states(_ count: Int) -> [CodexProtocol.ThreadState] {
+        (0..<count).compactMap { index in
+            calibration.physicalSlot(for: index + 1).flatMap {
+                try? CodexProtocol.ThreadState(
+                    physicalSlot: $0, color: legendColors[index], brightness: 1, effect: .solid, speed: 0
+                )
+            }
+        }
+    }
+    let shapes: [(String, [[Data]])] = [
+        ("1 key, one message", [device.prepare(threads: states(1))]),
+        ("6 keys, one message", [device.prepare(threads: states(6))]),
+        ("6 keys, six messages", states(6).map { device.prepare(threads: [$0]) }),
+        ("ring, one message", [device.prepare(lighting: CodexProtocol.LightingConfig(keys: .off, ambient: .off))]),
+    ]
+    let done = DispatchSemaphore(value: 0)
+    Task {
+        for (label, batch) in shapes {
+            let before = device.ackStats
+            var times: [Int] = []
+            for _ in 0..<5 {
+                let started = Date()
+                try? await device.write(batch: batch)
+                times.append(Int(Date().timeIntervalSince(started) * 1000))
+            }
+            let acks = device.ackStats - before
+            let reports = batch.map(\.count).reduce(0, +)
+            print("\(label): \(reports) reports — \(times.map { "\($0)ms" }.joined(separator: " ")) "
+                + "(acks \(acks.acked) ok, \(acks.timedOut) timed out)")
+        }
+        done.signal()
+    }
+    while done.wait(timeout: .now() + 0.05) == .timedOut {
+        RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+    }
+    device.close()
+    exit(0)
+}
+
 if CommandLine.arguments.contains("--paint") {
     guard let physical = calibration.physicalSlot(for: 1) else {
         print("\ncalibration has no entry for slot 1")

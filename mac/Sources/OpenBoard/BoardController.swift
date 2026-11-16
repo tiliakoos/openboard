@@ -123,6 +123,11 @@ final class BoardController: ObservableObject {
     /// `paint` is async and reentrant; these serialise it. See the comment there.
     private var isPainting = false
     private var repaintWanted = false
+    /// Paint durations since the last summary, and the pad's answers at that point.
+    private var paintTimings: [Duration] = []
+    private var paintRPCs = 0
+    private var statsSince = Date()
+    private var statsAcks = AckStats()
 
     /**
      Whether dictation is believed to be running — believed, and now corroborated.
@@ -2095,6 +2100,7 @@ final class BoardController: ObservableObject {
                 await self.releaseArchivedDesktopSessions()
                 await self.refreshDesktopChats()
                 await self.publishDeviceStatus(present: present)
+                self.logPaintStats()
                 try? await Task.sleep(for: present ? self.presentInterval : self.absentInterval)
             }
         }
@@ -2115,6 +2121,28 @@ final class BoardController: ObservableObject {
             // anything else is the pad not being there.
             lastOpenLog = Log.changed("device open", last: lastOpenLog, to: "NO — \(error.localizedDescription)")
         }
+    }
+
+    /// One line a minute: how long paints took and how the pad answered. The `paint: ok`
+    /// line cannot say this — a 200ms paint and a 4s one of timed-out acks read the same.
+    private func logPaintStats() {
+        guard Date().timeIntervalSince(statsSince) >= 60 else { return }
+        let acks = device.ackStats
+        let delta = acks - statsAcks
+        defer {
+            paintTimings = []
+            paintRPCs = 0
+            statsSince = Date()
+            statsAcks = acks
+        }
+        guard !paintTimings.isEmpty else { return }
+        let ms = paintTimings.map { Int($0.seconds * 1000) }.sorted()
+        Log.write(
+            "paint stats: \(ms.count) paints, median \(ms[ms.count / 2])ms, max \(ms.last!)ms, "
+                + "\(paintRPCs) rpcs; acks \(delta.acked) ok, \(delta.timedOut) timed out, \(delta.late) late; "
+                + "round trip \(delta.latencySummary); "
+                + "\(delta.reportsWritten) reports took \(delta.writeMilliseconds)ms to hand over"
+        )
     }
 
     private func closeDevice() async { closeDeviceSync() }
@@ -2331,6 +2359,11 @@ final class BoardController: ObservableObject {
             }
 
             let voiceAtPaint = voiceIsActive
+            let started = ContinuousClock.now
+            defer {
+                paintTimings.append(ContinuousClock.now - started)
+                paintRPCs += batch.count
+            }
             try await device.write(batch: batch, whileCurrent: { @MainActor [weak self] in
                 guard let self else { return false }
                 guard self.voiceIsActive == voiceAtPaint else {

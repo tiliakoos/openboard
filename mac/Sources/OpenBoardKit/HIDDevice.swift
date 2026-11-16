@@ -67,7 +67,15 @@ public final class HIDDevice: @unchecked Sendable {
     /// Calls waiting for their acknowledgement, keyed by request id. Touched from the
     /// IOKit callback thread as well as the caller's, hence the lock.
     private var pending: [Int: CheckedContinuation<Void, Error>] = [:]
+    /// When each pending request went out, and how many reports it took.
+    private var sentAt: [Int: (date: Date, reports: Int)] = [:]
+    private var stats = AckStats()
     private let pendingLock = NSLock()
+
+    public var ackStats: AckStats {
+        pendingLock.lock(); defer { pendingLock.unlock() }
+        return stats
+    }
 
     public init() {}
 
@@ -347,6 +355,11 @@ public final class HIDDevice: @unchecked Sendable {
 
         pendingLock.lock()
         let continuation = pending.removeValue(forKey: id)
+        if continuation != nil, let sent = sentAt.removeValue(forKey: id) {
+            stats.record(reports: sent.reports, milliseconds: Int(Date().timeIntervalSince(sent.date) * 1000))
+        } else if continuation == nil {
+            stats.late += 1
+        }
         pendingLock.unlock()
         continuation?.resume()
     }
@@ -471,9 +484,11 @@ public final class HIDDevice: @unchecked Sendable {
         let id = Self.requestID(in: reports)
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let started = Date()
             if let id {
                 pendingLock.lock()
                 pending[id] = continuation
+                sentAt[id] = (started, reports.count)
                 pendingLock.unlock()
             }
 
@@ -481,10 +496,15 @@ public final class HIDDevice: @unchecked Sendable {
                 for report in reports {
                     try Self.write(report, to: device)
                 }
+                pendingLock.lock()
+                stats.reportsWritten += reports.count
+                stats.writeMilliseconds += Int(Date().timeIntervalSince(started) * 1000)
+                pendingLock.unlock()
             } catch {
                 if let id {
                     pendingLock.lock()
                     let stored = pending.removeValue(forKey: id)
+                    sentAt[id] = nil
                     pendingLock.unlock()
                     stored?.resume(throwing: error)
                 } else {
@@ -507,6 +527,10 @@ public final class HIDDevice: @unchecked Sendable {
                 guard let self else { return }
                 self.pendingLock.lock()
                 let stranded = self.pending.removeValue(forKey: id)
+                if stranded != nil {
+                    self.stats.timedOut += 1
+                    self.sentAt[id] = nil
+                }
                 self.pendingLock.unlock()
                 stranded?.resume()
             }
