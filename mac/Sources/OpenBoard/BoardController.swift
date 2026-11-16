@@ -2330,6 +2330,7 @@ final class BoardController: ObservableObject {
                 }
             }
 
+            var threads: [CodexProtocol.ThreadState] = []
             for (slot, entry) in registry.occupancy() {
                 // A slot the calibration does not cover is skipped rather than guessed.
                 // Counted, because "every key went dark" and "the app wrote every key
@@ -2354,8 +2355,15 @@ final class BoardController: ObservableObject {
                     effect: effect,
                     speed: appearance.speed
                 )
-                batch.append(device.prepare(threads: [thread]))
+                threads.append(thread)
                 written += 1
+            }
+            // The vendor's own SDK sends every slot in one call. Kept switchable: the pad
+            // acknowledges a message it ignores, so only a look at it confirms the change.
+            if model.preferences.batchedKeyWrites {
+                if !threads.isEmpty { batch.append(device.prepare(threads: threads)) }
+            } else {
+                batch += threads.map { device.prepare(threads: [$0]) }
             }
 
             let voiceAtPaint = voiceIsActive

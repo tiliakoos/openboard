@@ -95,6 +95,10 @@ public struct Preferences: Equatable, Sendable {
     /// giving up on a prompt — a question with no good answer, about an event that
     /// should not happen. Off restores the old safety net at a fixed 15 minutes.
     public var holdAttention: Bool
+    /// Send all six keys in one `thstatus` message rather than one message per key, as
+    /// the ChatGPT app does. Over Bluetooth each message waits on a ~470ms
+    /// acknowledgement, which made per-key writes most of a repaint's time.
+    public var batchedKeyWrites = false
     /// Idle seconds before every light goes off. 0 means never. See `AutoOff`.
     public var autoOffSeconds: Int
     public var maxHoldSeconds: Int
@@ -593,6 +597,7 @@ extension Preferences {
         if let value = json["staleHours"] as? Int { result.staleHours = value }
         if let value = json["doneDecaySeconds"] as? Int { result.doneDecaySeconds = value }
         if let value = json["holdAttention"] as? Bool { result.holdAttention = value }
+        if let value = json["batchedKeyWrites"] as? Bool { result.batchedKeyWrites = value }
         if let value = json["autoOffSeconds"] as? Int { result.autoOffSeconds = value }
         /*
          An old document's timeout, read as the decision it encoded.
@@ -709,6 +714,7 @@ extension Preferences {
             "staleHours": staleHours,
             "doneDecaySeconds": doneDecaySeconds,
             "holdAttention": holdAttention,
+            "batchedKeyWrites": batchedKeyWrites,
             "autoOffSeconds": autoOffSeconds,
             "maxHoldSeconds": maxHoldSeconds,
             "voiceChord": voiceChord,
