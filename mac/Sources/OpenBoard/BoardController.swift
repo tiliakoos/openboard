@@ -125,6 +125,8 @@ final class BoardController: ObservableObject {
     private var repaintWanted = false
     /// Paint durations since the last summary, and the pad's answers at that point.
     private var paintTimings: [Duration] = []
+    /// T3 shell requests since the last summary. The poll period is this plus 1.5s.
+    private var t3PollTimings: [Duration] = []
     private var paintRPCs = 0
     private var statsSince = Date()
     private var statsAcks = AckStats()
@@ -1349,7 +1351,9 @@ final class BoardController: ObservableObject {
      orange key" rule, laps and the log are the board's own rather than a second copy.
      */
     private func pollT3() async -> Duration {
+        let asked = ContinuousClock.now
         let result = await t3Client.poll()
+        t3PollTimings.append(ContinuousClock.now - asked)
         // A token change restarted the loop while this was in flight; the new loop asks
         // again, and two loops applying snapshots would emit everything twice.
         guard !Task.isCancelled else { return .zero }
@@ -2181,9 +2185,14 @@ final class BoardController: ObservableObject {
         let delta = acks - statsAcks
         defer {
             paintTimings = []
+            t3PollTimings = []
             paintRPCs = 0
             statsSince = Date()
             statsAcks = acks
+        }
+        if !t3PollTimings.isEmpty {
+            let polls = t3PollTimings.map { Int($0.seconds * 1000) }.sorted()
+            Log.write("t3 stats: \(polls.count) polls, median \(polls[polls.count / 2])ms, max \(polls.last!)ms")
         }
         guard !paintTimings.isEmpty else { return }
         let ms = paintTimings.map { Int($0.seconds * 1000) }.sorted()
