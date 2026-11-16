@@ -70,6 +70,10 @@ Keep this list current — it is what makes upstream diffs tractable.
   allowing the next repaint to update the ring promptly under the same shared lock.
 - Reimplemented in Swift: IOKit directly rather than a native node binding, `async` writes, and
   typed errors. The wire format is byte-identical.
+- Request ids run in order (1…999, `CodexProtocol.nextRequestID`) rather than at random, so a
+  reply arriving after its acknowledgement wait gave up cannot complete a later request.
+- `HIDDevice` counts acknowledgements (on time, timed out, late), round trip by message size and
+  IOKit hand-over time (`AckStats`) for the app's once-a-minute `paint stats` log line.
 
 ## Tracking upstream
 

@@ -206,7 +206,12 @@ These read as arbitrary and are not:
   do nothing.
 - There is no lighting readback, and the ChatGPT app repaints these LEDs on its own
   schedule, so `BoardController` re-asserts on an interval (~2s while the pad is absent,
-  ~10s while present).
+  ~10s while present). A paint sends only the keys that changed; every key is rewritten
+  at least every 30s (`fullKeyInterval`), and on wake and reconnect.
+- **Over Bluetooth, writes cost per report, not per message:** ~180ms to hand each
+  64-byte report to IOKit (a key is 2 reports, the ring 3). That is why paints skip
+  unchanged keys and laps run on the clock. The `paint stats` log line, once a minute,
+  is where to look before guessing about lag.
 - `ACT10`/`ACT11` are two switches under one wide keycap; `ACT10` owns the binding and
   `ACT11` is debounced into it. The joystick and touch sensor emit nothing at all.
 
