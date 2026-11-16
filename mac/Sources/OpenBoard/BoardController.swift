@@ -222,8 +222,12 @@ final class BoardController: ObservableObject {
     private var lastKeys: [Int: CodexProtocol.ThreadState] = [:]
     private var lastFullKeys: Date = .distantPast
     /// Every key is rewritten at least this often, changed or not: it is what repairs a
-    /// key the ChatGPT app painted over, which nothing here can read back.
-    private static let fullKeyInterval: TimeInterval = 9
+    /// key the ChatGPT app painted over, which nothing here can read back. Not every
+    /// resident tick: a full write is ~3s of reports over Bluetooth, holding the lock a
+    /// colour change then waits behind, and the ChatGPT app skips writes its own state
+    /// has not changed, so it repaints these keys only on its own transitions. Waking
+    /// the pad and reconnecting still force a full write.
+    private static let fullKeyInterval: TimeInterval = 30
     private var batchAborted = false
     /// Last pad input or status change. See `AutoOff`.
     private var lastActivity = Date()
