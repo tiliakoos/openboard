@@ -87,49 +87,43 @@ struct PopoverView: View {
 
     // MARK: header
 
+    /// One line: how many sessions, and how many are waiting on you. The pad is drawn
+    /// at the right while it is live and simply absent otherwise — see `PadBadge`.
     private var header: some View {
         HStack(spacing: 10) {
-            Circle()
-                .fill(board.device.isUsable ? Color(RGB(0x09B821)) : Color(RGB(0xD41145)))
-                .frame(width: 8, height: 8)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(board.device.headline(board.deviceName))
-                    .font(.system(size: 13, weight: .semibold))
-                Text(subtitle)
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(.secondary)
-            }
+            summary
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
 
             Spacer(minLength: 0)
 
             if board.device.isUsable {
-                BatteryBadge(
+                PadBadge(
                     percent: board.padStatus?.battery ?? (board.isWired ? nil : battery.percent),
                     isCharging: board.padStatus?.isCharging ?? board.isWired
                 )
             }
         }
+        // As tall as the badge either way, so the header does not shift when the pad
+        // wakes or sleeps with the popover open.
+        .frame(minHeight: 18)
         .padding(.horizontal, 14)
-        .padding(.top, 13)
-        .padding(.bottom, 11)
+        .padding(.vertical, 12)
         // Read when the popover opens, which is the only moment anyone is looking at
         // it. The background poll is deliberately slow.
         .onAppear { battery.refresh() }
     }
 
-    private var subtitle: String {
+    private var summary: Text {
         // `isOccupied` means "holds a session record", which stays true after the
         // session ends — so this counted five with three of them closed. It is the
         // running ones.
         let live = board.slots.filter(\.isLive).count
         let blocked = board.blocked.count
-        // "sessions", not "live". Both surfaces say it, and "live" was doing the work
-        // of a qualifier nobody asked for — a session that is not running is not on
-        // the board at all.
-        var parts = ["\(live) session\(live == 1 ? "" : "s")"]
-        if blocked > 0 { parts.append("\(blocked) blocked") }
-        return parts.joined(separator: " · ")
+        guard live > 0 else { return Text("No sessions") }
+        let count = Text("\(live) session\(live == 1 ? "" : "s")")
+        guard blocked > 0 else { return count }
+        return Text("\(count) \(Text("· \(blocked) blocked").fontWeight(.regular).foregroundStyle(.secondary))")
     }
 
     // MARK: blocked
@@ -567,70 +561,6 @@ struct StateBadge: View {
         case .idle, .ended: .secondary
         default: Color(state.defaultAppearance.color)
         }
-    }
-}
-
-/**
- The pad's battery, where the Sync button used to be.
-
- Sync went because it had little to do: the resident loop repaints every ten seconds
- anyway, so the button mostly re-did work that was already happening. A number you
- cannot get anywhere else is worth more than a button that duplicates a timer.
-
- Drawn as a real battery outline rather than bare text so it reads at a glance, and
- coloured only when it is low — a green battery at 80% is decoration, an orange one at
- 15% is information.
- */
-struct BatteryBadge: View {
-    let percent: Int?
-    /// Reported by the pad, or assumed from the cable until it reports.
-    var isCharging: Bool = false
-
-    private var tint: Color {
-        if isCharging { return Color(RGB(0x09B821)) }
-        guard let percent else { return .secondary }
-        if percent <= 10 { return Color(RGB(0xD41145)) }
-        if percent <= 25 { return Color(RGB(0xFF6A00)) }
-        return .secondary
-    }
-
-    var body: some View {
-        HStack(spacing: 5) {
-            if isCharging {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(tint)
-            }
-            Text(percent.map { "\($0)%" } ?? "—")
-                .font(.system(size: 11.5, weight: .medium).monospacedDigit())
-                .foregroundStyle(tint)
-
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 2.5)
-                    .strokeBorder(tint.opacity(0.55), lineWidth: 1)
-                    .frame(width: 22, height: 11)
-                if let percent {
-                    RoundedRectangle(cornerRadius: 1.5)
-                        .fill(tint)
-                        // Never wider than the shell, and never invisible at 1% —
-                        // a bar that vanishes reads as "no reading" rather than "low".
-                        .frame(width: max(2, 20 * Double(min(100, percent)) / 100), height: 8)
-                        .padding(.leading, 1)
-                }
-            }
-            .overlay(alignment: .trailing) {
-                // The nub.
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(tint.opacity(0.55))
-                    .frame(width: 2, height: 4)
-                    .offset(x: 3)
-            }
-        }
-        .help(isCharging
-            ? percent.map { "Charging · \($0)% battery" } ?? "Charging; battery level not reported."
-            : percent == nil
-                ? "Battery not read yet — the pad may be asleep."
-                : "Codex Micro battery")
     }
 }
 
