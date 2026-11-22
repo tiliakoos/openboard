@@ -24,7 +24,7 @@ struct PadBadge: View {
                 .frame(width: 18, height: 18)
             BatteryGauge(percent: percent, isCharging: isCharging)
         }
-        .foregroundStyle(Color.primary.opacity(0.7))
+        .foregroundStyle(BatteryGauge.neutral)
         .help(isCharging
             ? percent.map { "Charging · \($0)% battery" } ?? "Charging; battery level not reported."
             : percent == nil
@@ -70,7 +70,8 @@ struct BatteryGauge: View {
     let percent: Int?
     var isCharging: Bool = false
 
-    private static let body = CGSize(width: 30, height: 14)
+    static let neutral = Color.primary.opacity(0.7)
+    private static let shell = CGSize(width: 30, height: 14)
 
     private var isLow: Bool {
         guard let percent, !isCharging else { return false }
@@ -79,16 +80,14 @@ struct BatteryGauge: View {
 
     private var tint: Color {
         if isCharging { return Color(RGB(0x09B821)) }
-        guard let percent else { return .primary.opacity(0.7) }
-        if percent <= 10 { return Color(RGB(0xD41145)) }
-        if percent <= 25 { return Color(RGB(0xFF6A00)) }
-        return .primary.opacity(0.7)
+        guard let percent, percent <= 25 else { return Self.neutral }
+        return Color(RGB(percent <= 10 ? 0xD41145 : 0xFF6A00))
     }
 
     var body: some View {
         HStack(spacing: 1) {
             shell
-                .frame(width: Self.body.width, height: Self.body.height)
+                .frame(width: Self.shell.width, height: Self.shell.height)
             // The nub.
             RoundedRectangle(cornerRadius: 1)
                 .fill(tint.opacity(0.5))
@@ -106,10 +105,10 @@ struct BatteryGauge: View {
                     // Never wider than the shell, and never invisible at 1% — a fill
                     // that vanishes reads as "no reading" rather than "low".
                     .mask(alignment: .leading) {
-                        Rectangle().frame(width: max(2, Self.body.width * Double(min(100, percent)) / 100))
+                        Rectangle().frame(width: max(2, Self.shell.width * Double(min(100, percent)) / 100))
                     }
                 label(percent)
-                    .foregroundStyle(isLow ? AnyShapeStyle(.primary) : AnyShapeStyle(.black))
+                    .foregroundStyle(isLow ? Color.primary : .black)
                     .blendMode(isLow ? .normal : .destinationOut)
             }
             // The cut-out must stop at the battery, not go through the window.

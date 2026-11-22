@@ -191,25 +191,25 @@ struct PopoverView: View {
     @ViewBuilder
     private var blockedLabel: some View {
         let blocked = board.blocked
-        let tool = blocked.first?.pendingTool.map { " on \($0)" } ?? ""
-        if blocked.count > 1 {
-            Text(padLive
-                ? "Slots \(blocked.map { String($0.slot) }.joined(separator: " and ")) are waiting"
-                    + " — press one of those keys"
-                : "\(blocked.count) sessions are waiting")
-        } else if padLive {
-            Text("Slot \(blocked.first?.slot ?? 0) is waiting\(tool)")
-        } else {
-            HStack(spacing: 4) {
-                Text("“\(blocked.first?.title ?? "Untitled chat")”")
-                    .truncationMode(.tail)
-                Text("is waiting\(tool)")
-                    .fixedSize()
+        if blocked.count == 1, let only = blocked.first {
+            let tool = only.pendingTool.map { " on \($0)" } ?? ""
+            if padLive {
+                Text("Slot \(only.slot) is waiting\(tool)")
+            } else {
+                HStack(spacing: 4) {
+                    Text("“\(only.title ?? "Untitled chat")”")
+                        .truncationMode(.tail)
+                    Text("is waiting\(tool)")
+                        .fixedSize()
+                }
             }
+        } else if padLive {
+            Text("Slots \(blocked.map { String($0.slot) }.joined(separator: " and ")) are waiting"
+                + " — press one of those keys")
+        } else {
+            Text("\(blocked.count) sessions are waiting")
         }
     }
-
-    // MARK: sessions
 
     /// The agent keys a session can be on — every one not bound to an action.
     private var agentKeys: [SlotView] { board.slots.filter { board.actions[$0.key] == nil } }
@@ -342,7 +342,7 @@ struct SessionRow: View {
     let slot: SlotView
     let capID: String?
     /// Whether this row is a key on the desk or just a session in a list.
-    var padLive = true
+    let padLive: Bool
     var jump: () -> Void = {}
     var release: () -> Void = {}
     /// Nil when there is nowhere to move to, which hides the control.
@@ -486,7 +486,7 @@ struct OffBoardRow: View {
     let session: SlotView
     let keys: [SlotView]
     /// Whether the places it can be put are keys, or just the six the menu bar shows.
-    var padLive = true
+    let padLive: Bool
     var jump: () -> Void = {}
     var assign: (Int) -> Void = { _ in }
     var dismiss: () -> Void = {}
