@@ -215,8 +215,9 @@ struct PopoverView: View {
     private var agentKeys: [SlotView] { board.slots.filter { board.actions[$0.key] == nil } }
 
     /// What the list shows. With the pad, every agent key, free ones included: a free
-    /// key is a real thing on the desk. Without it there are no keys, only sessions.
-    private var rows: [SlotView] { padLive ? agentKeys : agentKeys.filter(\.isOccupied) }
+    /// key is a real thing on the desk. Without it there are no keys, only sessions —
+    /// the running ones, which is what the header counts and the icon folds on.
+    private var rows: [SlotView] { padLive ? agentKeys : agentKeys.filter(\.isLive) }
 
     private var sessions: some View {
         let rows = rows
