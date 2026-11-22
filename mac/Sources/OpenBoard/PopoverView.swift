@@ -4,10 +4,13 @@ import SwiftUI
 /**
  The menu bar popover.
 
- Section order is the design's, and it is an order of urgency: what the pad is doing,
- then anything blocked on you, then the six sessions, then the sessions without a key,
- then the action keys, then the commands. 376pt wide; a long chat title truncates rather
- than widening it, and only the off-board list scrolls.
+ Section order is an order of urgency: anything blocked on you, then the six sessions,
+ then the sessions without a key, then the commands. 376pt wide; a long chat title
+ truncates rather than widening it, and only the off-board list scrolls.
+
+ The action keys are not drawn here. What a key does is in Settings, on the picture of
+ the pad, and repeating it in a menu opened a hundred times a day was space spent on
+ something looked up twice a year.
 
  When the pad is unusable a banner says so above the sessions, which stay. The list
  used to be replaced entirely on the grounds that a board you cannot trust is worse
@@ -49,7 +52,7 @@ struct PopoverView: View {
                 // Deliberately *not* a ScrollView. Inside a MenuBarExtra window it is
                 // proposed no height and collapses to nothing — which is exactly how the
                 // session list came to be invisible while the commands below it rendered
-                // fine. The content is a fixed six rows plus the action keys, so it has a
+                // fine. The content is at most six rows plus a capped list, so it has a
                 // known height and never needs to scroll.
                 VStack(spacing: 0) {
                     if !board.device.isUsable {
@@ -70,8 +73,6 @@ struct PopoverView: View {
                         Divider().opacity(0.6)
                         offBoardSessions
                     }
-                    Divider().opacity(0.6)
-                    actionKeys
                 }
             }
 
@@ -243,113 +244,6 @@ struct PopoverView: View {
         .padding(.horizontal, 8)
         .padding(.top, 8)
         .padding(.bottom, 6)
-    }
-
-    // MARK: action keys
-
-    /**
-     The action keys, laid out as they physically are.
-
-     Previously a three-column grid in reading order, which put ACT09 underneath ACT06
-     and stood the double-width MIC cap up as an ordinary square. Neither matches the
-     object under your hand: on the pad, ACT06–ACT09 are one row of four, and the
-     bottom row is the touch strip, a 2U cap, and one more key.
-
-     So this renders `BoardLayout.rows`' last two rows through the same `BoardCapView`
-     the settings window draws the pad with — same 51pt caps, same 2U geometry, same
-     materials. Reaching for a key in the menu should be the same spatial act as
-     reaching for it on the desk, and two different pictures of one keyboard is a
-     memory tax for no benefit.
-
-     `Grid`, not `LazyVGrid`: only `Grid` honours `gridCellColumns`, and without it the
-     wide cap silently collapses and the row comes out a column short.
-
-     ## The touch strip is a hole, not a key
-
-     It is drawn on the pad in the settings window because it is physically there, and
-     the window is a picture of the object. Here it was a black disc labelled "inert" —
-     a control offering nothing, in a menu whose every other item does something.
-
-     It is left out, but **its column is not**. An empty cell of the same width keeps
-     the 2U cap in the position your hand knows; deleting the cell outright slides the
-     whole bottom row one key to the left and the picture stops being true.
-     */
-    private var actionKeys: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionLabel("Action keys")
-            // One container for the whole block: side by side, independently sampled
-            // glass leaves a hard seam between caps, and grouped they blend at the
-            // edges the way a single sheet of material does.
-            GlassGroup(spacing: 7) {
-                Grid(horizontalSpacing: 7, verticalSpacing: 12) {
-                    ForEach(Array(padRows.enumerated()), id: \.offset) { _, row in
-                        GridRow {
-                            ForEach(row, id: \.id) { cell in
-                                keyCell(cell).gridCellColumns(cell.span)
-                            }
-                        }
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.top, 2)
-        }
-        .padding(.horizontal, 8)
-        .padding(.top, 6)
-        .padding(.bottom, 12)
-    }
-
-    /// The whole pad once an Agent key is bound to an action, so it shows where it sits.
-    private var padRows: [[BoardCell]] {
-        BoardLayout.agentKeys.contains { board.actions[$0] != nil }
-            ? BoardLayout.rows
-            : Array(BoardLayout.rows.suffix(2))
-    }
-
-    /// A caption may use its key's width plus a little of the gutter either side, but
-    /// never enough to touch the next one — 3pt of clear space is what keeps two
-    /// wrapped names from reading as one paragraph.
-    private func captionWidth(for cell: BoardCell) -> CGFloat {
-        let unit: CGFloat = 51, gap: CGFloat = 7
-        let key = unit * CGFloat(cell.span) + gap * CGFloat(cell.span - 1)
-        return key + gap - 3
-    }
-
-    @ViewBuilder
-    private func keyCell(_ cell: BoardCell) -> some View {
-        if cell.isAgent ? board.actions[cell.id] == nil : !cell.isAction {
-            Color.clear.frame(width: 51, height: 51)
-        } else {
-            VStack(spacing: 6) {
-                BoardCapView(
-                    cell: cell,
-                    slot: nil,
-                    capID: board.caps[cell.id],
-                    action: board.actions[cell.id],
-                    isSelected: false,
-                    isFlat: true
-                )
-                /*
-                 The name earns its place; the ACT id does not. It is what you type into
-                 the settings window, not what you need while deciding which key to
-                 press.
-
-                 Held to the key's own width so it wraps instead of running under its
-                 neighbours — "new Terminal tab" is nearly three keys wide as one line,
-                 which is what made the first row look crooked. Two lines are reserved
-                 whether or not the second is used, so every key in a row sits on the
-                 same baseline, and the scale factor lets a stubborn name shrink a
-                 little rather than truncate into "new Terminal…".
-                 */
-                Text(board.actions[cell.id]?.short ?? "unassigned")
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(board.actions[cell.id] == nil ? .tertiary : .secondary)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2, reservesSpace: true)
-                    .minimumScaleFactor(0.82)
-                    .frame(width: captionWidth(for: cell))
-            }
-        }
     }
 
     // MARK: commands

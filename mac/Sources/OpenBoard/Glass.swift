@@ -141,25 +141,3 @@ extension View {
         }
     }
 }
-
-/**
- A group of glass shapes that should behave as one piece of material.
-
- Without this each shape samples its background independently, so two caps side by side
- have a hard seam between them; inside a container they share the pass and their edges
- blend the way real glass does. It is also the cheaper path — one sample, not N.
-
- Transparent before macOS 26, where it is simply the layout it wraps.
- */
-struct GlassGroup<Content: View>: View {
-    var spacing: CGFloat?
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        if #available(macOS 26.0, *) {
-            GlassEffectContainer(spacing: spacing) { content }
-        } else {
-            content
-        }
-    }
-}
