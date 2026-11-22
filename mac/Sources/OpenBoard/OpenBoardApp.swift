@@ -332,14 +332,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 /**
- The status item: six live dots, one per session key.
+ The status item: the sessions, one mark each, whether or not the pad is there.
 
- No count and no text — the pad is the thing you look at, and this is its shadow. The
- dots carry state by color exactly as the keys do, so a glance at either answers the
- same question.
-
- It swaps to a single pulsing warning glyph when the pad is unusable, because at that
- point every dot would be a lie about hardware that is not listening.
+ No count and no text. The marks carry state by color exactly as the keys do, so a
+ glance at either answers the same question — and when the pad is away, this is the
+ only board there is. See `StatusItemImage` for what shape and the folded mark mean.
  */
 struct StatusItemLabel: View {
     @EnvironmentObject private var board: BoardModel
@@ -347,7 +344,7 @@ struct StatusItemLabel: View {
     var body: some View {
         // Image, not shapes: MenuBarExtra's label only reliably renders Text and
         // Image. See StatusItemImage for what that cost to find out.
-        Image(nsImage: StatusItemImage.make(slots: board.slots, usable: board.device.isUsable))
+        Image(nsImage: StatusItemImage.make(slots: board.slots, padLive: board.device.isUsable))
     }
 }
 

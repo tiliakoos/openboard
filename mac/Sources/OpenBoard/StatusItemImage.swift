@@ -2,38 +2,53 @@ import AppKit
 import OpenBoardKit
 
 /**
- The six LED dots, drawn as an image.
+ The status item: one mark per session inside a frame, drawn as an image.
+
+ The dots are the sessions, not the pad. They keep their colours whether or not the pad
+ is reachable, so the menu bar is still a status board away from the desk. Three things
+ are read from it, each on its own channel:
+
+ - **Colour** is a session's state, exactly as on its key. A hollow mark is a free slot.
+ - **Shape** is the pad. Square marks in a squared frame mean the pad is live; round
+   marks in a capsule mean it is away, asleep or refused. The pad sleeps dozens of times
+   a day, so this is the one signal that must not change the item's width.
+ - **One larger mark** means no session is running.
 
  **Why not just SwiftUI.** `MenuBarExtra`'s `label:` only reliably renders `Text` and
  `Image`. An `HStack` of `Circle` shapes builds and runs and produces a status item
  that is present, sized and clickable — and completely invisible. That is exactly how
  it failed: the popover opened from a blank patch of menu bar.
 
- So the dots are drawn with Core Graphics into an `NSImage` and handed over as an
+ So the marks are drawn with Core Graphics into an `NSImage` and handed over as an
  `Image`, which is the one shape the menu bar is guaranteed to draw.
-
- `isTemplate` is deliberately **false**. A template image is recolored to match the
- menu bar's appearance, which would throw away the only information here — these are
- hardware colors and the whole point is that the dot matches the key.
  */
 enum StatusItemImage {
     private static let dot: CGFloat = 6
     private static let gap: CGFloat = 3
     private static let height: CGFloat = 16
+    /// Clear space between the frame and the marks, on every side.
+    private static let inset: CGFloat = 4
+    private static let frameHeight: CGFloat = 13
+    /// Larger than a session mark: one alone at 6pt reads as a speck of dust.
+    private static let foldedDot: CGFloat = 8
 
-    /// One dot per slot, in board order.
-    static func make(slots: [SlotView], usable: Bool) -> NSImage {
-        guard usable else { return warning() }
+    /// One mark per slot, in board order, or the folded mark when nothing is running.
+    static func make(slots: [SlotView], padLive: Bool) -> NSImage {
+        guard slots.contains(where: \.isLive) else { return folded(padLive: padLive) }
 
-        let count = max(slots.count, 1)
-        let width = CGFloat(count) * dot + CGFloat(count - 1) * gap
+        let count = slots.count
+        let width = inset * 2 + CGFloat(count) * dot + CGFloat(count - 1) * gap
 
         let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
             guard let context = NSGraphicsContext.current?.cgContext else { return true }
-            let y = (height - dot) / 2
+            context.setLineWidth(1)
+            context.setStrokeColor(NSColor.secondaryLabelColor.cgColor)
+            context.addPath(frame(width: width, padLive: padLive))
+            context.strokePath()
 
+            let y = (height - dot) / 2
             for (index, slot) in slots.enumerated() {
-                let x = CGFloat(index) * (dot + gap)
+                let x = inset + CGFloat(index) * (dot + gap)
                 let rect = CGRect(x: x, y: y, width: dot, height: dot)
 
                 if let appearance = slot.appearance, appearance.effect != .off {
@@ -46,60 +61,71 @@ enum StatusItemImage {
                         blue: appearance.color.blue,
                         alpha: alpha
                     )
-                    context.fillEllipse(in: rect)
+                    context.addPath(mark(in: rect, padLive: padLive))
+                    context.fillPath()
                 } else {
-                    // A free or ended slot is an outline, not a filled dot — "nothing
+                    // A free or ended slot is an outline, not a filled mark — "nothing
                     // here" has to look different from "deliberately dark".
                     context.setStrokeColor(NSColor.tertiaryLabelColor.cgColor)
-                    context.setLineWidth(1)
-                    context.strokeEllipse(in: rect.insetBy(dx: 0.5, dy: 0.5))
+                    context.addPath(mark(in: rect.insetBy(dx: 0.5, dy: 0.5), padLive: padLive))
+                    context.strokePath()
                 }
             }
             return true
         }
+        // Deliberately not a template. A template image is recolored to match the menu
+        // bar's appearance, which would throw away the only information here — these
+        // are hardware colors and the whole point is that the mark matches the key.
         image.isTemplate = false
+        image.accessibilityDescription = padLive ? "OpenBoard sessions" : "OpenBoard sessions — pad away"
         return image
     }
 
     /**
-     The pad is unusable, so every dot would be a claim about hardware that is not
-     listening. One plain dot instead.
+     No session is running, so six hollow marks would be six ways of saying nothing.
+     One mark in a small frame instead: the board folded up, not replaced by a
+     different kind of icon.
 
-     It used to be a red warning glyph, and red was the wrong word. The overwhelmingly
-     common reason the pad is unreachable is that it went to sleep — it did so forty
-     times in one day here, twenty-one of those for longer than fifteen seconds — and
-     none of that is a fault. An alarm colour for the normal resting state of the
-     hardware is how a colour stops meaning anything, and red is the one this app can
-     least afford to spend: it means a turn failed.
-
-     A single dot where the six were, so the board reads as collapsed to one indicator
-     rather than replaced by a different kind of icon — but larger than one of them. Six
-     dots at 6pt read as a row because there are six; one alone at that size reads as a
-     speck of dust on the menu bar.
-
-     ## Template, so it is white where white is right
-
-     `isTemplate` is true here and false for the session dots, which look like a
-     contradiction and are not. The session dots carry hardware colours and must never
-     be recoloured. This one carries no colour information at all, so it should be the
-     menu bar's own foreground — white on a dark menu bar, dark on a light one. Filling
-     it with literal white would make it invisible for anyone in light appearance.
+     A template, which the row is not, and that is not a contradiction. The row carries
+     hardware colours and must never be recoloured. This carries no colour at all, so
+     it should be the menu bar's own foreground — white on a dark menu bar, dark on a
+     light one. Only the alpha of what is drawn here is kept.
      */
-    private static func warning() -> NSImage {
-        // Larger than a session dot, and deliberately so. Six dots at 6pt read as a row
-        // because there are six of them; one alone at that size reads as a speck of
-        // dust on the menu bar. This is roughly the weight the old warning glyph had.
-        let size: CGFloat = 10
-        let image = NSImage(size: NSSize(width: size, height: height), flipped: false) { _ in
+    private static func folded(padLive: Bool) -> NSImage {
+        let width = foldedDot + 12
+        let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
             guard let context = NSGraphicsContext.current?.cgContext else { return true }
-            let rect = CGRect(x: 0, y: (height - size) / 2, width: size, height: size)
-            // Any opaque colour: a template image is a mask, and only its alpha is kept.
+            context.setLineWidth(1)
+            context.setStrokeColor(NSColor.black.withAlphaComponent(0.6).cgColor)
+            context.addPath(frame(width: width, padLive: padLive))
+            context.strokePath()
+
+            let rect = CGRect(
+                x: (width - foldedDot) / 2, y: (height - foldedDot) / 2,
+                width: foldedDot, height: foldedDot
+            )
             context.setFillColor(NSColor.black.cgColor)
-            context.fillEllipse(in: rect)
+            context.addPath(mark(in: rect, padLive: padLive))
+            context.fillPath()
             return true
         }
         image.isTemplate = true
-        image.accessibilityDescription = "OpenBoard — pad unreachable"
+        image.accessibilityDescription = padLive ? "OpenBoard — no sessions" : "OpenBoard — no sessions, pad away"
         return image
+    }
+
+    /// The outline around the marks. Its corners follow them, so the pad is said twice.
+    /// Inset half a point so the 1pt stroke is not clipped at the image's edge.
+    private static func frame(width: CGFloat, padLive: Bool) -> CGPath {
+        let rect = CGRect(x: 0.5, y: (height - frameHeight) / 2, width: width - 1, height: frameHeight)
+        let radius = padLive ? 3 : frameHeight / 2
+        return CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
+    }
+
+    /// A keycap when the pad is live, a dot when it is not.
+    private static func mark(in rect: CGRect, padLive: Bool) -> CGPath {
+        guard padLive else { return CGPath(ellipseIn: rect, transform: nil) }
+        let radius = rect.width / 4
+        return CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
     }
 }
