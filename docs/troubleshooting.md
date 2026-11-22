@@ -109,7 +109,7 @@ device state, hooks — and every paint since.
 
 It contains session names, which are Claude Code's own summaries of what you are working
 on, along with working-directory paths. It never leaves your machine, but it is worth
-knowing before pasting it into an issue.
+knowing before pasting it anywhere.
 
 ## Starting over
 

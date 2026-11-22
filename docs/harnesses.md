@@ -127,9 +127,8 @@ events it emits, which entry points may claim a key, and what it cannot do. See
 `limitations` is not optional decoration. A state that will never appear has to be
 declared, because the alternative is a user waiting for a colour that is never coming.
 
-Open an issue before writing much. The board's model — one key per session, keys that
-never move, green that holds — constrains what a harness has to provide, and it is worth
-checking the fit before building against it.
+Check the fit before writing much. The board's model — one key per session, keys that
+never move, green that holds — constrains what a harness has to provide.
 
 ---
 

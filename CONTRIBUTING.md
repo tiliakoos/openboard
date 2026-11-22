@@ -128,8 +128,8 @@ no completion event, so a key never turns green; Pi has no documented approval e
 key never turns amber — which is the state the board exists for.
 
 If you use either daily, knowing whether those signals genuinely do not exist is worth
-more than a patch. See [docs/harnesses.md](docs/harnesses.md), and open an issue before
-writing much — the board's model constrains what a harness has to provide.
+more than a patch. See [docs/harnesses.md](docs/harnesses.md) — the board's model constrains
+what a harness has to provide.
 
 ## Things worth knowing before changing them
 
