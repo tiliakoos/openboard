@@ -9,7 +9,7 @@ Louder **Codex Micro** keypad from Claude Code sessions running on this Mac. One
 session: blue working, orange awaiting a permission prompt, purple finished but still
 running background work, green done, red error.
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing anything structural — it is the
+Read [DEVELOPMENT.md](DEVELOPMENT.md) before changing anything structural — it is the
 record of *why* several things are the way they are, and most of it was paid for by a
 real bug.
 

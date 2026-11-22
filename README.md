@@ -156,8 +156,8 @@ included; the beat map for Europe's *The Final Countdown* is. See
 
 A SwiftPM package in `mac/`, built without Xcode. The inner loop is `mac/tools/reload.sh`;
 tests are `swift run OpenBoardTests`. [CLAUDE.md](CLAUDE.md) covers the architecture and
-the hardware gotchas, [CONTRIBUTING.md](CONTRIBUTING.md) the build details, and `docs/`
-the original per-feature notes.
+the hardware gotchas, [DEVELOPMENT.md](DEVELOPMENT.md) building, testing and the
+simulated pad.
 
 ## Credits
 
