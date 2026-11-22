@@ -260,21 +260,6 @@ fi
 ENTITLEMENTS="$ROOT/OpenBoard.entitlements"
 [ -f "$ENTITLEMENTS" ] || { printf 'missing %s\n' "$ENTITLEMENTS" >&2; exit 1; }
 
-# The hardened runtime also enforces library validation, which requires embedded
-# frameworks to carry the *same Team ID* as the app. A self-signed identity has no
-# Team ID, so the embedded Sparkle.framework used to fail validation and dyld killed the
-# app at launch, before the first log line. Sparkle is gone (2026-11-22) and nothing is
-# embedded now, so this exception is probably unnecessary — kept until a build without
-# it has been verified to launch.
-if [ "$IDENTITY_KIND" != "developer-id" ]; then
-  LOCAL_ENTITLEMENTS="$ROOT/.build/OpenBoard-local.entitlements"
-  cp "$ENTITLEMENTS" "$LOCAL_ENTITLEMENTS"
-  /usr/libexec/PlistBuddy \
-    -c "Add :com.apple.security.cs.disable-library-validation bool true" \
-    "$LOCAL_ENTITLEMENTS"
-  ENTITLEMENTS="$LOCAL_ENTITLEMENTS"
-fi
-
 sign() {
   # $1 = path, $2 = identifier
   codesign --force --sign "$IDENTITY" --identifier "$2" \

@@ -38,12 +38,10 @@ the *same* app, so the Input Monitoring / Accessibility / Automation / Bluetooth
 survive `reload.sh`. Do not delete it, and do not re-run `bootstrap.sh`.
 
 A self-signed cert carries no Team ID, and the hardened runtime's library validation
-requires embedded frameworks to share one — so a local build used to die silently at
-launch, before its first log line, on the embedded Sparkle framework. `build-app.sh`
-signs non-Developer-ID builds with `com.apple.security.cs.disable-library-validation`
-merged in (via PlistBuddy — `plutil` misreads the dotted key). Sparkle was removed on
-2026-11-22, so nothing is embedded and the exception is probably dead; dropping it is a
-separate change, verified by a launch, because getting it wrong kills the app silently.
+requires embedded frameworks to share one — so a local build once died silently at
+launch, before its first log line, on the embedded Sparkle framework. Sparkle is gone
+and nothing is embedded, so builds no longer need `disable-library-validation`. If a
+framework is ever embedded again, that failure comes back.
 
 The app has no updater (Sparkle removed 2026-11-22): `git pull` and `reload.sh` is the
 update path. **Never install Cam's Homebrew cask or release zip**: it installs to the same
