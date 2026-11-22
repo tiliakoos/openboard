@@ -1,269 +1,102 @@
 # OpenBoard
 
-Drive the six Agent-key LEDs on a Work Louder **Codex Micro** from your **Claude Code**
-sessions, so you can see at a glance which session is working, which finished, and which
-is blocked waiting on you.
-
-Maintained by **Nick T.**, built on Cam Wilson's original [OpenBoard](https://github.com/camwilso/openboard) · MIT licensed.
-
-<p align="center">
-  <img src="assets/hero.jpg" width="820"
-       alt="A Codex Micro beside a MacBook, its keys lit green, blue and amber for different sessions">
-</p>
-
-Six sessions, six keys. Blue is thinking, green finished, amber needs you. You find out
-which one is blocked by glancing at your desk rather than cycling through tabs.
-
-The same six states sit in the menu bar, so it works with the pad out of sight:
+A macOS menu-bar app that turns a Work Louder **Codex Micro** into a status board for
+your AI coding agents. Each agent session gets one of the six Agent keys, lit by what it
+is doing — working, waiting on you, finished — and pressing the key takes you straight to
+that chat.
 
 <p align="center">
-  <img src="assets/menubar.png" width="420"
-       alt="Six coloured dots in the macOS menu bar mirroring the pad">
+  <img src="assets/pad.jpg" width="520"
+       alt="A Codex Micro with two green keys, one blue, one purple and two white free keys, its ring lit">
 </p>
 
-### Documentation
-
-| | |
-|---|---|
-| [What it does](docs/what-it-does.md) | the states, the ring, how keys are assigned, jumping to a chat |
-| [Setting up](docs/setup.md) | installing, the five setup steps, and what each permission is for |
-| [Settings](docs/settings.md) | every pane — key mapping, colours, shows, permissions, updates |
-| [Other agents](docs/harnesses.md) | Hermes and Pi, what they cannot do yet, and where help is wanted |
-| [Troubleshooting](docs/troubleshooting.md) | the four things that usually go wrong |
-
-> [!NOTE]
-> **Keep the pad on Layer 1.** Per-key status renders only there — writes succeed on
-> other layers and simply do not appear.
+Works with **Claude Code** (Terminal, iTerm2, cmux, Warp, VS Code, the Claude desktop
+app), **T3 Code** and **Cursor**, side by side on the same board.
 
 > [!IMPORTANT]
-> Unofficial and experimental. This rides a private Codex Micro HID command that can
-> change with any ChatGPT, Work Louder Input, or firmware update. Not affiliated with or
-> endorsed by OpenAI, Anthropic, or Work Louder.
+> Unofficial and experimental. It drives the pad over a private HID protocol that a
+> ChatGPT, Work Louder or firmware update can change. Not affiliated with OpenAI,
+> Anthropic, Work Louder, T3 or Cursor.
 
-## Why
+## What the keys mean
 
-Running several Claude Code sessions at once, the expensive question is *which one is
-blocked on a permission prompt* — cheap to answer, costly to miss. That is one bit of
-ambient status per session, which is a bad fit for a screen and a good fit for six LEDs
-under your hand.
+| Key | Meaning |
+|---|---|
+| **Blue**, breathing | working — a turn is running |
+| **Orange**, breathing | **waiting on you** — a permission prompt or a question |
+| **Purple** | turn finished, but work it started is still running: a CI watch, a dev server, a background agent |
+| **Green** | finished, and you have not been back yet. Holds until you return |
+| **Red** | the turn failed |
+| Dim | session open, nothing running |
+| Free | no session on this key |
 
-## What the colours mean
+Every colour, effect and brightness is editable in **Settings → Colors**; the photo above
+uses white for free keys.
 
-Hues follow OpenAI's own Codex Micro legend, so a key means the same thing whether Codex
-or Claude painted it.
+**The ring** is for across the room. By default it stays dark and fires on transitions:
+a green lap when a chat finishes, an orange lap when one stops to ask, a red heartbeat
+when a turn fails. It can instead show the most urgent state on the whole board
+continuously (spinning while anything works), hold one colour, or stay off, and it spins
+a rainbow while you dictate.
 
-| State | Colour | Meaning |
+## Where sessions come from
+
+| Agent | How it reports | Pressing its key |
 |---|---|---|
-| idle | `#2E4A6B` dim | session started, nothing running |
-| working | `#0C47E9` breathing | turn in progress |
-| background | `#8A00FF` | turn finished, but work it started is still running — a CI watch, a dev server, a background agent |
-| **awaiting** | **`#FF6A00` breathing** | **blocked on a permission prompt — go here** |
-| stalled | `#FF6A00` shallow | waiting at an idle prompt |
-| done | `#09B821` | turn finished, and it holds until you go back |
-| error | `#D41145` breathing | turn failed |
+| **Claude Code** in Terminal, iTerm2, cmux, Warp | hooks in `~/.claude/settings.json`, installed by the app | jumps to the exact tab or pane |
+| **Claude Code** in VS Code | the same hooks | reveals the panel holding that chat; the integrated terminal only raises VS Code |
+| **Claude desktop app** (Code tab) | the same hooks | opens that chat; archiving it frees the key |
+| **T3 Code** | polls T3's local server with a token | opens that thread |
+| **Cursor** (Agents window) | Cursor runs Claude Code's hooks for its own chats | opens that chat |
 
-**done holds.** Work that finished while you were elsewhere is still green when you look,
-rather than having quietly reverted to idle. It clears when you go back and send that
-session something — see [What it does](docs/what-it-does.md).
+Hermes Agent and Pi are described too, with their gaps stated: Hermes has no completion
+event and Pi no approval event. Subagents, child threads and cloud sessions never take a
+key, by design — one fan-out would fill the board.
 
-### The ring
+## More sessions than keys
 
-The outer ring summarises the whole board from across the room, where six small keys
-cannot be read. It is **dark by default** and fires only when something changes — a ring
-that is always lit is furniture; one that is dark until something happens is a
-notification.
+Sessions that do not fit **wait, they are not dropped**. The menu bar lists them under
+"Not on a key", and a freed key is refilled from that list. A full board only gives way
+to something more urgent: a session waiting on you takes any key that is not, and a
+working session takes a finished one after ten minutes.
 
-| Event | Ring |
-|---|---|
-| a chat finishes | green, one slow lap |
-| a chat stops to ask something | orange, one lap |
-| a turn fails | red heartbeat |
+Keys keep **session order**: closing a session or settling a thread shifts later ones up
+to close the gap, and finishing a turn never reorders anything. From the menu you can put
+a waiting session on a key by hand (it is then pinned) or take one off (it stays off until
+it next needs you).
 
-Failures get a different *shape*, not just a different colour: peripheral vision reads
-motion before hue, so a failure must never be mistakable for a completion.
+## The other keys
 
-<p align="center">
-  <img src="assets/ring.jpg" width="820"
-       alt="The pad's outer ring lit green, mid-lap, after a session finished">
-</p>
+Every key is bindable in **Settings → Board**, the six Agent keys included, along with the
+keycap icon the menu shows for it. Actions include:
 
-## How keys are assigned
+- **approve / reject** the pending prompt — refused whenever OpenBoard cannot confirm
+  which chat is in front of you, rather than sending ⏎ at whatever is there
+- **custom keyboard shortcut**, **send ⏎**, **type a snippet**
+- **dictation** by tap, hold or toggle, with the ring showing while you dictate. It can
+  follow the system mic or Handy, so it stays right when dictation is started or stopped
+  from the keyboard
+- **go back** to the window you were in before the last jump; **next / previous session**
+- new Terminal or cmux tab, arrows, tab switching, repaint, all keys off, open the menu
 
-A session claims the lowest free key when it starts. Closing a CLI session or settling a
-T3 thread shifts later sessions up to close the gap, preserving their order and skipping
-keys bound to actions. Earlier sessions stay put. Finishing a turn keeps the session on
-the board; when all session keys are occupied, eviction never takes one awaiting input.
-
-This is deliberately unlike Codex's "most recent chats" mode, where a key number is your
-rank in a live recency sort — so typing in one chat can repaint four other keys. Status
-you cannot trust is worse than no status.
-
-Only sessions running **on this Mac** get a key, because that is where the hooks execute.
-Terminal, iTerm2, cmux, Warp, VS Code and the Claude desktop app's Code tab all work.
-Subagents deliberately do not — six keys is
-a scarce budget — and anything remote is unreachable.
-
-## Other agents
-
-Built for **Claude Code**, and that is the one tested at length — daily, for months,
-across Terminal and both VS Code surfaces. Hooks install automatically and every state
-works.
-
-Two others are wired, from their documentation rather than from use, and each has a real
-gap the app declares rather than hides:
-
-| | |
-|---|---|
-| **Claude Code** | complete — automatic setup, every state |
-| **Hermes Agent** | no completion event, so a key never turns green |
-| **Pi** | no documented approval event, so a key never turns amber — the state this exists for |
-
-**This is where contributions would help most.** If you use Hermes or Pi daily and know
-whether those signals really are missing, that is worth more than a patch — see
-[Other agents](docs/harnesses.md).
+By default the dial opens the menu on a press and Settings on a long press. Lights go off after ten
+minutes with no activity (adjustable, never while a key is orange); any press wakes them.
 
 ## Requirements
 
 - macOS 14 or later, Apple Silicon or Intel
-- A Work Louder Codex Micro or Creator Micro 2, paired over Bluetooth or USB
-- Claude Code
+- A Work Louder Codex Micro (or Creator Micro 2), paired over Bluetooth or USB, **on
+  Layer 1** — per-key status renders only there
+- To build: the Command Line Tools with the **macOS 26 SDK**. No Xcode, no Apple
+  Developer account
 
-That is the whole list. Neither the ChatGPT app nor Work Louder's Input app needs to be
-installed — OpenBoard talks to the pad directly.
-
-No runtime dependencies, and no update check: a build from this repo never phones home.
-Nothing about your sessions leaves the machine.
+Neither the ChatGPT app nor Work Louder's Input app is needed. If the ChatGPT app is
+running it repaints these LEDs on its own schedule; OpenBoard reclaims them within about
+ten seconds.
 
 ## Install
 
-There is no packaged release; build it from source — see
-[Building it yourself](#building-it-yourself).
-
-### Setting up
-
-Open OpenBoard and it walks you through the rest. It has no Dock icon — it lives in the
-menu bar.
-
-<p align="center">
-  <img src="assets/setup.png" width="520"
-       alt="Guided setup: three of five steps complete">
-</p>
-
-| | |
-|---|---|
-| **Input Monitoring** | reading the pad — every light and every key press |
-| **Accessibility** | typing snippets, sending ⏎ and ⎋, custom shortcuts, scrolling with the dial |
-| **Automation** | granted in place, without a trip to System Settings |
-| **Key order** | ten seconds, and worth it — colours are set per *slot* |
-| **Claude Code hooks** | so your sessions report what they are doing |
-
-It is a checklist rather than a wizard, because two of those only take effect after
-OpenBoard restarts. Stop and come back whenever; it works out what is left each time.
-[Setting up](docs/setup.md) covers each step and what it is for.
-
-Two things it cannot do for you, both on the hardware: pair the pad, and keep it on
-Layer 1.
-
-**Hooks are read when a session starts**, so open a new Claude Code session to see the
-keys light. Sessions already running get a key immediately but will not report until they
-restart.
-
-## Using it
-
-<p align="center">
-  <img src="assets/popover.png" width="380"
-       alt="The menu bar popover: four live sessions, two waiting on a permission prompt">
-</p>
-
-**Press an Agent key** to jump to that chat. In Terminal and iTerm2 it finds the exact
-tab; in cmux it selects the exact surface, in whichever workspace it lives; in Warp it
-opens the exact tab through Warp's own focus URL; in VS Code it reveals the panel already
-holding that conversation; in the Claude desktop app it opens that session through the
-app's own `claude://` link. Nothing is ever *opened* by a jump — an approximate jump beats
-an unrequested one that rearranges your editor.
-
-Where OpenBoard cannot confirm which chat is in front of you, it **refuses to answer a
-prompt** rather than sending ⏎ at whatever happens to be there.
-
-**Press the dial** for the popover, **hold it** for Settings. Every other key is yours to
-bind.
-
-Every key other than the six Agent keys is yours to bind — pick what it does and which
-keycap it wears:
-
-<p align="center">
-  <img src="assets/settings.png" width="820"
-       alt="Settings: choosing a key's action and its keycap from the icon set">
-</p>
-
-The ring has ten built-in shows beyond the three the board uses on its own, and fun mode
-takes over the whole pad for the length of a song. Both live in Settings → Colors —
-[the full tour](docs/settings.md).
-
-## Updates
-
-Pull and rebuild — `mac/tools/reload.sh`. A self-signed build cannot update itself, so
-there is no update check.
-
-## Uninstall
-
-1. Turn the hooks off in **Settings → Device** — do this first
-2. Quit OpenBoard and delete `/Applications/OpenBoard.app`
-3. Optionally delete `~/Library/Application Support/OpenBoard/` — your colours and
-   calibration
-
-Do not skip the first step. Deleting the app without it leaves entries in
-`~/.claude/settings.json` pointing at a binary that is gone, and every session will try
-to run it.
-
-## Coexisting with Codex
-
-The ChatGPT app is not required — without it, OpenBoard is the only thing driving the pad
-and none of this applies. The ChatGPT app repaints these LEDs on its own schedule. If you use both, either set
-Codex to **Custom assignments** and give it a subset of keys, or accept periodic repaint.
-The two never interleave writes mid-message.
-
-## Fun mode
-
-One of the action keys plays a video full-screen and drives the pad in time with it,
-overriding live status until it finishes.
-
-The video is not included — it is ~90MB and not mine to redistribute — but the beat map
-is. Supply your own `.mp4` of **Europe – The Final Countdown** and the show works with no
-further setup:
-
-The grid was built from [this upload](https://www.youtube.com/watch?v=9jK-NcRmVcw).
-Save it as an `.mp4`, then:
-
-```sh
-open ~/Library/Application\ Support/OpenBoard/Media/the-final-countdown/
-# drop the .mp4 in there — any filename, the first video found is used
-```
-
-**It has to be the same cut.** The grid is 4:55.5 long with the music starting 1.03s in,
-so a remaster or a version with a different intro will drift. If yours differs, regenerate
-the map — it takes one command and no dependencies.
-
-See [the-final-countdown](the-final-countdown/) for that, and for mapping songs of your
-own.
-
-## Where things are kept
-
-| | |
-|---|---|
-| `~/Library/Application Support/OpenBoard/` | settings and calibration |
-| `~/Library/Logs/OpenBoard/app.log` | what the app saw and did |
-
-Settings are plain JSON and safe to hand-edit. **Settings → Device → Files** reveals
-either in Finder.
-
-The log contains session names — Claude Code's own summaries of what you are working on —
-and working directory paths. It never leaves your machine, but it is worth knowing before
-pasting it into a bug report.
-
-## Building it yourself
-
-The app is a SwiftPM package and needs no Apple Developer account to compile:
+There is no packaged release. Build it:
 
 ```sh
 git clone https://github.com/tiliakoos/openboard
@@ -271,24 +104,73 @@ cd openboard
 mac/tools/bootstrap.sh
 ```
 
-A build you signed yourself cannot update itself, so Check for Updates is hidden. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for the development setup.
+`bootstrap.sh` creates a local signing certificate (so permission grants survive
+rebuilds), builds, installs to `/Applications/OpenBoard.app` and opens it. The app has no
+Dock icon; it lives in the menu bar and walks you through setup:
 
-## Authors
+| | |
+|---|---|
+| **Input Monitoring** | reading the pad: every light and key press. Takes effect after a restart |
+| **Accessibility** | shortcuts, ⏎ and ⎋, snippets, the dial. Also needs a restart |
+| **Automation** | System Events for key actions; Terminal, iTerm2 and others are asked on first use |
+| **Key order** | confirms which physical key is slot 1 |
+| **Claude Code hooks** | merged into `~/.claude/settings.json`, backed up first, other tools' hooks kept |
 
-OpenBoard was created by **Cam Wilson** ([camwilso/openboard](https://github.com/camwilso/openboard))
-— the app, the protocol work against this pad, and the session model. This repo split
-from it after 0.3.0 and is maintained by **Nick T.**: T3 Code, Cursor and Claude desktop
-sessions, the off-board waiting list, the background state, and the Bluetooth write path
-are among what has been added since.
+Hooks are read when a session starts, so open a new Claude Code session to see a key
+light. For T3 Code, open **T3 Code** in Settings' sidebar and save a token (the pane gives
+the command that mints one). Turn on **Open OpenBoard at login** in Settings → Device.
+
+## Updating
+
+```sh
+git pull && mac/tools/reload.sh
+```
+
+There is no update check and nothing phones home. `reload.sh` rebuilds and replaces the
+app in place, which keeps permissions, the login item and hook paths working.
+
+## Uninstall
+
+1. Quit OpenBoard and delete `/Applications/OpenBoard.app`
+2. Remove the hooks whose command is `…/OpenBoard.app/Contents/MacOS/openboard-hook` from
+   `~/.claude/settings.json` — otherwise every session tries to run a binary that is gone
+3. Optionally delete `~/Library/Application Support/OpenBoard/`
+
+## Where things are kept
+
+| | |
+|---|---|
+| `~/Library/Application Support/OpenBoard/` | settings, colours, calibration, T3 token (plain JSON) |
+| `~/Library/Logs/OpenBoard/app.log` | what the app saw and did — where every diagnosis starts |
+
+The log contains session names and working-directory paths. It never leaves the machine,
+but check it before pasting it anywhere.
+
+## Fun mode
+
+One action plays a video full-screen and drives the pad in time with it. The video is not
+included; the beat map for Europe's *The Final Countdown* is. See
+[the-final-countdown](the-final-countdown/) for setup and for mapping your own songs.
+
+## Development
+
+A SwiftPM package in `mac/`, built without Xcode. The inner loop is `mac/tools/reload.sh`;
+tests are `swift run OpenBoardTests`. [CLAUDE.md](CLAUDE.md) covers the architecture and
+the hardware gotchas, [CONTRIBUTING.md](CONTRIBUTING.md) the build details, and `docs/`
+the original per-feature notes.
+
+## Credits
+
+OpenBoard began as [camwilso/openboard](https://github.com/camwilso/openboard) by **Cam
+Wilson**: the original idea, the protocol work against this pad, and the app up to its
+0.3.0. This repo split from it in November 2026 and is maintained by **Nick T.**
+
+The HID transport was first published by [@pejmanjohn](https://github.com/pejmanjohn) in
+[`codex-micro-light`](https://github.com/pejmanjohn/codex-micro-light).
+[Sparkle](https://sparkle-project.org) is embedded, and a few vendor marks identify the
+agents in Settings. Details in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) and
+[VENDORED.md](VENDORED.md).
 
 ## License
 
 [MIT](LICENSE) — Copyright © 2026 Cam Wilson and Nick T.
-
-Three things come from elsewhere and keep their own notices: the HID transport this is
-built on was first published by [@pejmanjohn](https://github.com/pejmanjohn) in
-[`codex-micro-light`](https://github.com/pejmanjohn/codex-micro-light) (MIT),
-[Sparkle](https://sparkle-project.org) installs the updates, and three vendor brand marks
-identify the harnesses in the sidebar. All are itemised in
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) and [VENDORED.md](VENDORED.md).
