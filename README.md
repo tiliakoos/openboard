@@ -65,6 +65,16 @@ to close the gap, and finishing a turn never reorders anything. From the menu yo
 a waiting session on a key by hand (it is then pinned) or take one off (it stays off until
 it next needs you).
 
+## Without the pad
+
+The menu bar icon is a status board on its own. It shows one mark per session in the same
+colours as the keys, whether or not the pad is connected, so it still works away from the
+desk. Square marks mean the pad is live; round ones mean it is away or asleep. With no
+session running it folds to a single mark.
+
+The menu follows suit: with the pad it lists the six keys, without it a plain list of
+sessions. Clicking a row jumps to that session either way.
+
 ## The other keys
 
 Every key is bindable in **Settings → Board**, the six Agent keys included, along with the

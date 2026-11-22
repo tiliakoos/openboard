@@ -9,6 +9,9 @@ Louder **Codex Micro** keypad from Claude Code sessions running on this Mac. One
 session: blue working, orange awaiting a permission prompt, purple finished but still
 running background work, green done, red error.
 
+The menu bar icon shows the same sessions in the same colours, and keeps doing so when
+the pad is away.
+
 Read [DEVELOPMENT.md](DEVELOPMENT.md) before changing anything structural — it is the
 record of *why* several things are the way they are, and most of it was paid for by a
 real bug.
@@ -148,6 +151,11 @@ is what makes the suite possible at all.
 - **`SessionState` colors are hardware values**, not a theme. The swatch in the settings
   window and the LED are the same number. Orange belongs to `awaiting` alone; `idle` must
   not be near-white (the pad's resting state is white).
+- **The menu bar works without the pad.** `StatusItemImage` draws the sessions whether
+  or not the pad is reachable: colour is state, shape is the pad (square live, round away
+  or asleep), one mark means no sessions. The popover is a board of keys with the pad and
+  a plain session list without it. Away and asleep are normal and say nothing; only
+  `DeviceStatus.isFault` gets a banner.
 - **The ring summarises, it does not duplicate** (`Ambient.swift`). Dark by default, fires
   on transitions. Failures get a different *shape*, not just a different hue — peripheral
   vision reads motion before colour.
