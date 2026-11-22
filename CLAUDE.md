@@ -39,16 +39,15 @@ survive `reload.sh`. Do not delete it, and do not re-run `bootstrap.sh`.
 
 A self-signed cert carries no Team ID, and the hardened runtime's library validation
 requires embedded frameworks to share one — so a local build used to die silently at
-launch, before its first log line, on the embedded Sparkle framework. `build-app.sh` now
+launch, before its first log line, on the embedded Sparkle framework. `build-app.sh`
 signs non-Developer-ID builds with `com.apple.security.cs.disable-library-validation`
-merged in (via PlistBuddy — `plutil` misreads the dotted key). Developer ID builds are
-untouched.
+merged in (via PlistBuddy — `plutil` misreads the dotted key). Sparkle was removed on
+2026-11-22, so nothing is embedded and the exception is probably dead; dropping it is a
+separate change, verified by a launch, because getting it wrong kills the app silently.
 
-This app does not auto-update, by design: a build from this repo is the only update path.
-`build-app.sh` leaves the feed and key empty, and `OB_ENABLE_UPDATES=1` needs both passed
-explicitly (`OB_FEED_URL`, `OB_SPARKLE_PUBLIC_KEY`) — there is no default pointing at the
-original project's feed. **Never install Cam's Homebrew cask or release zip**: it installs
-to the same `/Applications/OpenBoard.app` and would replace this build.
+The app has no updater (Sparkle removed 2026-11-22): `git pull` and `reload.sh` is the
+update path. **Never install Cam's Homebrew cask or release zip**: it installs to the same
+`/Applications/OpenBoard.app` and would replace this build.
 
 ## Commands
 
@@ -88,9 +87,8 @@ paired pad, a running Claude Code) skips when the precondition is absent.
 the device acknowledges malformed requests with `ok:1` and then ignores them, so a broken
 write looks identical to a working one. Verify against the real pad via `tools/reload.sh`.
 
-Two extra harnesses for the otherwise-invisible: `tools/test-onboarding.sh` (rehearses a
-first install with permissions revoked and a scratch state dir) and `tools/test-update.sh`
-(a real Sparkle update against a local feed).
+One extra harness for the otherwise-invisible: `tools/test-onboarding.sh` rehearses a
+first install with permissions revoked and a scratch state dir.
 
 ## Architecture
 
@@ -199,10 +197,10 @@ These read as arbitrary and are not:
 ## Permanent identifiers
 
 The bundle id (`com.tiliakoos.openboard`, since 2026-11-22; `com.openboardapp.mac` is the
-original project's) and the local signing certificate are effectively immutable: macOS keys TCC grants and login-item registration off them, so changing either
-means re-granting every permission. CI asserts that builds have updates off, plus the
-Sparkle embed, the inside-out signing of `openboard-hook`, and the `apple-events`
-entitlement — that last one shipped missing once and made Automation ungrantable *with no
+original project's) and the local signing certificate are effectively immutable: macOS
+keys TCC grants and login-item registration off them, so changing either means
+re-granting every permission. CI asserts the inside-out signing of `openboard-hook`, that
+nothing is embedded under `Frameworks/`, and the `apple-events` entitlement — that last one shipped missing once and made Automation ungrantable *with no
 dialog at all*.
 
 ## Logs

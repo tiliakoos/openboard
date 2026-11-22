@@ -48,10 +48,6 @@ struct OpenBoardApp: App {
             PopoverView()
                 .environmentObject(delegate.board)
                 .environmentObject(delegate.battery)
-                // As an object rather than through BoardCommands: the popover needs to
-                // *observe* the update status, and BoardCommands is a struct of
-                // closures with nothing for SwiftUI to watch.
-                .environmentObject(delegate.updater)
                 .environmentObject(delegate.setup)
                 .environment(\.boardCommands, commands)
                 .tint(SystemColors.selectedRow)
@@ -115,20 +111,6 @@ struct BoardCommands: Sendable {
     /// Close the dropdown. Only ever called from a row *inside* it — the underlying
     /// click is a toggle, so calling it with nothing showing opens the menu instead.
     var dismissMenu: @MainActor () -> Void = {}
-
-    /// Whether this build can update itself. False in a local build, which has no
-    /// feed signing key — see Updater. The UI asks rather than offering a button that
-    /// would fail with a signature error nobody can act on.
-    var canUpdate: Bool = false
-    /// Check now, because someone clicked.
-    var checkForUpdates: @MainActor () -> Void = {}
-    /// Reopen the dialog for an update Sparkle has already found.
-    var showAvailableUpdate: @MainActor () -> Void = {}
-    /// Sparkle's background-check preference, read and written through Sparkle rather
-    /// than mirrored into our own config — it already persists the answer, and two
-    /// copies of one setting is one copy too many.
-    var automaticUpdates: @MainActor () -> Bool = { false }
-    var setAutomaticUpdates: @MainActor (Bool) -> Void = { _ in }
 }
 
 private struct BoardCommandsKey: EnvironmentKey {
@@ -190,10 +172,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     lazy var board = BoardModel()
     let battery = BatteryMonitor()
-    /// Starts its own scheduled check in `init` when the build has a feed key, so it
-    /// is constructed here rather than on first use — an updater nobody opens Settings
-    /// to see is still the one that has to notice a release.
-    let updater = Updater()
     /// One answer to "is this install finished", shared by the popover, the settings
     /// panes and the setup window. Lazy because it reads `board`.
     lazy var setup = SetupState(board: board)
@@ -245,12 +223,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dismiss: { [weak self] session in self?.controller?.dismiss(sessionID: session) },
         openSettings: { [weak self] in self?.showMainWindow() },
         openSetup: { [weak self] in self?.showSetup() },
-        dismissMenu: { [weak self] in self?.controller?.dismissMenuBarPopover() },
-        canUpdate: Updater.isAvailable,
-        checkForUpdates: { [weak self] in self?.updater.checkForUpdates() },
-        showAvailableUpdate: { [weak self] in self?.updater.showAvailableUpdate() },
-        automaticUpdates: { [weak self] in self?.updater.automaticallyChecks ?? false },
-        setAutomaticUpdates: { [weak self] on in self?.updater.automaticallyChecks = on }
+        dismissMenu: { [weak self] in self?.controller?.dismissMenuBarPopover() }
     )
 
     /**
@@ -269,7 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func showMainWindow() {
         if mainWindow == nil {
-            mainWindow = MainWindowController(board: board, commands: commands, updater: updater, setup: setup)
+            mainWindow = MainWindowController(board: board, commands: commands, setup: setup)
         }
         mainWindow?.show()
     }

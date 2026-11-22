@@ -3,10 +3,9 @@
 # Runs on ordinary pushes and needs no secrets at all — nothing here signs, notarizes or
 # publishes, so it is safe on a fork and on a pull request from one.
 #
-# It does assemble the bundle. The unit tests cannot catch a Sparkle framework that
-# fails to embed, an Info.plist that will not parse, or inside-out signing that breaks
-# when a path changes — and every one of those is invisible until you try to build a
-# release. Assembling it here is about forty seconds and covers all three.
+# It does assemble the bundle. The unit tests cannot catch an Info.plist that will not
+# parse, inside-out signing that breaks when a path changes, or a missing entitlement.
+# Assembling it here is about forty seconds and covers them.
 
 name: CI
 
@@ -63,10 +62,8 @@ jobs:
         working-directory: mac
         run: swift run OpenBoardTests
 
-      # Ad-hoc signed, because there is no Developer ID here and there should not be:
-      # this job runs on pull requests, including from forks. Ad-hoc still exercises
-      # everything that actually breaks — the framework embed, the nested-code signing
-      # order, and whether codesign --verify --deep --strict passes at all.
+      # Ad-hoc signed, because there is no identity here. Ad-hoc still exercises the
+      # nested-code signing order and whether codesign --verify --deep --strict passes.
       - name: Assemble the app bundle
         run: mac/tools/build-app.sh --force
 
@@ -82,23 +79,10 @@ jobs:
           codesign -dv "$APP/Contents/MacOS/openboard-hook" 2>&1 | grep -q "runtime" \
             || { echo "hook helper is missing the hardened runtime flag"; exit 1; }
 
-          # Sparkle has to be embedded and stripped of the sandbox-only XPC services.
-          test -d "$APP/Contents/Frameworks/Sparkle.framework" \
-            || { echo "Sparkle.framework is not embedded"; exit 1; }
-          test ! -d "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices" \
-            || { echo "XPCServices should have been stripped"; exit 1; }
-
-          # Ordinary CI builds must not check or update from the production feed.
-          FEED=$(/usr/libexec/PlistBuddy -c "Print :SUFeedURL" "$APP/Contents/Info.plist")
-          test -z "$FEED" || { echo "local build has an update feed: $FEED"; exit 1; }
-
-          ENABLED=$(/usr/libexec/PlistBuddy -c "Print :OBUpdatesEnabled" "$APP/Contents/Info.plist")
-          test "$ENABLED" = false || { echo "local updates are enabled"; exit 1; }
-          AUTO=$(/usr/libexec/PlistBuddy -c "Print :SUEnableAutomaticChecks" "$APP/Contents/Info.plist")
-          test "$AUTO" = false || { echo "local automatic checks are enabled"; exit 1; }
-
-          KEY=$(/usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" "$APP/Contents/Info.plist")
-          test -z "$KEY" || { echo "local build has an update key"; exit 1; }
+          # Nothing is embedded any more; a framework appearing here means a dependency
+          # came back without the embed-and-sign work it needs.
+          test ! -d "$APP/Contents/Frameworks" \
+            || { echo "unexpected Frameworks directory"; exit 1; }
 
           # The hardened runtime blocks Apple events without this, and blocks them
           # *silently*: macOS returns errAEEventNotPermitted with no consent dialog, so

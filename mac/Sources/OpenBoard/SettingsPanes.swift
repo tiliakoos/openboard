@@ -12,7 +12,6 @@ import SwiftUI
  */
 struct DevicePane: View {
     @EnvironmentObject private var board: BoardModel
-    @EnvironmentObject private var updater: Updater
     @Environment(\.boardCommands) private var commands
 
     @State private var permissions = PermissionProbe.inspect()
@@ -251,8 +250,8 @@ struct DevicePane: View {
                 // Before Files, not after. Files is reference and this is actionable,
                 // and the actionable thing should not sit below the list of paths
                 // nobody scrolls past.
-                PaneHeader("Version", "Which build this is, and how it gets a newer one.")
-                updateSection
+                PaneHeader("Version", "Which build this is. Update with git pull and reload.sh.")
+                versionSection
 
                 PaneHeader("Files", "Where your settings and log are kept.")
                 configFileSection
@@ -397,112 +396,24 @@ struct DevicePane: View {
     }
 
     /**
-     Which build this is, and how it gets a newer one.
-
-     Its own section rather than a line under Files, which is where it started. Files is
-     reference — here is where things live, nothing to do. This is the opposite: a
-     status that changes and a button that acts on it, and burying an action under a
-     list of paths is how it stays unfound.
-
-     There is no About window, so this is also the only answer to "what version are you
-     on?" short of reading Info.plist in a terminal — a poor first question to ask
-     someone reporting a bug. Selectable, because the point is to paste it into an issue.
-
-     The controls are hidden rather than disabled in a build that cannot update. A
-     disabled control is a promise that something would happen if only you were allowed;
-     a locally-built copy will never have an update feed, so there is nothing to promise
-     — the status line says why instead.
+     Which build this is. There is no About window, so this is the only answer to "what
+     version are you on?" short of reading Info.plist in a terminal. Selectable, so it
+     can be pasted.
      */
-    private var updateSection: some View {
+    private var versionSection: some View {
         let info = Bundle.main.infoDictionary
         let short = info?["CFBundleShortVersionString"] as? String ?? "?"
         let build = info?["CFBundleVersion"] as? String ?? "?"
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                Text("Version")
-                    .font(.system(size: 11.5, weight: .medium))
-                    .frame(width: 54, alignment: .leading)
-                Text("\(short) (\(build))")
-                    .font(.system(size: 11.5).monospaced())
-                    .textSelection(.enabled)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-            }
-
-            Text(updateStatusText)
-                .font(.system(size: 11.5))
-                .foregroundStyle(
-                    updater.status.isFailure
-                        ? AnyShapeStyle(Color(RGB(0xD41145)))
-                        : AnyShapeStyle(.secondary)
-                )
-                .fixedSize(horizontal: false, vertical: true)
-
-            if commands.canUpdate {
-                HStack(spacing: 10) {
-                    // A switch, matching Starting up. Both are "should the app do this
-                    // on its own", and two different controls for one question read as
-                    // two different kinds of setting.
-                    Toggle(isOn: Binding(
-                        get: { commands.automaticUpdates() },
-                        set: { commands.setAutomaticUpdates($0) }
-                    )) {
-                        Text("Check for updates automatically").font(.system(size: 12.5))
-                    }
-                    .toggleStyle(.switch)
-
-                    Spacer(minLength: 0)
-
-                    Button(updater.status.updateVersion == nil ? "Check now" : "Install") {
-                        if updater.status.updateVersion == nil {
-                            commands.checkForUpdates()
-                        } else {
-                            commands.showAvailableUpdate()
-                        }
-                    }
-                    .controlSize(.small)
-                    .disabled(updater.status == .checking)
-                }
-            }
+        return HStack(spacing: 10) {
+            Text("Version")
+                .font(.system(size: 11.5, weight: .medium))
+                .frame(width: 54, alignment: .leading)
+            Text("\(short) (\(build))")
+                .font(.system(size: 11.5).monospaced())
+                .textSelection(.enabled)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
         }
-    }
-
-    /**
-     One line under the version, saying what the updater knows.
-
-     "Never checked" and "no update found" are told apart on purpose. A status line that
-     only knows a boolean renders both as silence, and the difference is the entire
-     question when someone is wondering why they have not been offered a release they
-     know shipped.
-     */
-    private var updateStatusText: String {
-        switch updater.status {
-        case .disabled:
-            return "This build cannot update itself — it was compiled locally."
-        case .notChecked:
-            // Sparkle remembers the last check across launches, so "not checked yet"
-            // alone would be misleading the morning after one — the app has checked,
-            // just not since it started.
-            guard let last = updater.lastCheck else { return "Not checked yet." }
-            return "Last checked \(Self.relative(last))."
-        case .checking:
-            return "Checking"
-        case .available(let version):
-            return "Version \(version) is available."
-        case .upToDate:
-            guard let last = updater.lastCheck else { return "Up to date." }
-            return "Up to date — last checked \(Self.relative(last))."
-        case .failed(let message):
-            return "Could not check: \(message)"
-        }
-    }
-
-    /// Shared so the two branches above cannot drift into phrasing the same instant
-    /// two different ways.
-    private static func relative(_ date: Date) -> String {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .full
-        return f.localizedString(for: date, relativeTo: Date())
     }
 
     /// One path, shortened to `~` and openable. Disabled rather than hidden when the

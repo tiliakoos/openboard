@@ -26,7 +26,6 @@
 #   OB_VERSION    override the marketing version (default: nearest git tag)
 #   OB_BUILD      override the build number    (default: commit count)
 #   OB_IDENTITY   codesign identity to use     (default: best available, see below)
-#   OB_ENABLE_UPDATES=1 enables updates for releases and the localhost harness
 
 set -eu
 
@@ -65,10 +64,8 @@ command -v swift >/dev/null 2>&1 || {
 # The git tag is the single source of truth, so there is no number to remember to bump
 # in two places and no way for the About box to disagree with the release it came from.
 #
-# CFBundleVersion is the commit count rather than anything derived from the tag,
-# because Sparkle compares *that* field to decide whether an update is newer, and it
-# must increase monotonically for every build that is ever published. A commit count
-# does; a hand-written "1" does not.
+# CFBundleVersion is the commit count rather than anything derived from the tag, so it
+# increases monotonically with every build and never needs bumping by hand.
 VERSION=${OB_VERSION:-$(git -C "$ROOT" describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null | sed 's/^v//')}
 [ -n "$VERSION" ] || VERSION="0.0.0"
 BUILD=${OB_BUILD:-$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)}
@@ -103,47 +100,13 @@ else
   fi
 fi
 
-UPDATES_ENABLED=false
-SPARKLE_PUBLIC_KEY=""
-FEED_URL=""
-ATS_EXCEPTION=""
-case "${OB_ENABLE_UPDATES:-0}" in
-  1)
-    SPARKLE_PUBLIC_KEY=${OB_SPARKLE_PUBLIC_KEY-}
-    # No defaults: the original project's feed and key belong to its releases, never to
-    # a build from this repo.
-    FEED_URL=${OB_FEED_URL-}
-    # An opted-in build without both would ship unable to ever update itself.
-    [ -n "$SPARKLE_PUBLIC_KEY" ] && [ -n "$FEED_URL" ] || {
-      printf 'OB_ENABLE_UPDATES=1 needs a non-empty feed URL and public key\n' >&2
-      exit 1
-    }
-    case "$FEED_URL" in
-      http://localhost:*|http://localhost/*|http://127.0.0.1:*|http://127.0.0.1/*)
-        ATS_EXCEPTION='  <key>NSAppTransportSecurity</key>
-  <dict><key>NSAllowsLocalNetworking</key><true/></dict>'
-        printf 'NOTE: building against a LOCAL test feed — %s\n' "$FEED_URL"
-        ;;
-      *)
-        [ "$IDENTITY_KIND" = "developer-id" ] || {
-          printf 'production updates require a valid Developer ID Application identity\n' >&2
-          exit 1
-        }
-        ;;
-    esac
-    UPDATES_ENABLED=true
-    ;;
-  0) ;;
-  *) printf 'OB_ENABLE_UPDATES must be 1 or unset\n' >&2; exit 2 ;;
-esac
-
 # Everything that changes the built bytes — the version included, or a retag with no
 # source change would keep the old bundle and quietly ship the wrong number.
 STAMP=$(cat "$ROOT"/Sources/OpenBoard/*.swift "$ROOT"/Sources/OpenBoardKit/*.swift \
   "$ROOT"/Sources/openboard-hook/*.swift "$ROOT"/Sources/openboard-icon/*.swift \
   "$ROOT/OpenBoard.entitlements" "$0" \
   | shasum -a 256 | cut -d" " -f1)
-POLICY_STAMP=$(printf '%s\n' "$IDENTITY" "$IDENTITY_KIND" "$UPDATES_ENABLED" "$SPARKLE_PUBLIC_KEY" "$FEED_URL" \
+POLICY_STAMP=$(printf '%s\n' "$IDENTITY" "$IDENTITY_KIND" \
   | shasum -a 256 | cut -c1-16)
 STAMP="$STAMP-$CONFIG-$VERSION-$BUILD${UNIVERSAL:+-universal}-$POLICY_STAMP"
 
@@ -189,7 +152,7 @@ for product in OpenBoard openboard-hook; do
 done
 
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 # `.build/<config>` is a symlink to the host triple's directory, so the single-arch
 # path needs no special casing.
@@ -209,34 +172,6 @@ place() {
 place OpenBoard "$APP/Contents/MacOS/OpenBoard"
 place openboard-hook "$APP/Contents/MacOS/openboard-hook"
 
-# ---------------------------------------------------------------- Sparkle
-#
-# Xcode would embed this for us. By hand it is a copy and a strip, and the strip is
-# not just about size:
-#
-#  - XPCServices are needed only by *sandboxed* apps, which this is not. Left in, they
-#    are two more signed bundles for notarization to inspect and two more things to get
-#    wrong for no benefit.
-#  - Headers and module maps are build-time inputs. Shipping them is harmless but they
-#    are a third of the framework.
-#
-# ditto rather than cp -R: a framework is a pile of symlinks (Versions/Current, and the
-# top-level aliases into it) and the signature seals them. Copying them as files
-# produces a bundle that verifies here and fails on the next machine.
-SPARKLE_FW=$(find "$ROOT/.build/artifacts" -type d -name "Sparkle.framework" -path "*macos-arm64_x86_64*" 2>/dev/null | head -1)
-[ -n "$SPARKLE_FW" ] || { printf 'Sparkle.framework not found — run `swift build` first\n' >&2; exit 1; }
-ditto "$SPARKLE_FW" "$APP/Contents/Frameworks/Sparkle.framework"
-rm -rf "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices" \
-       "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Headers" \
-       "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/PrivateHeaders" \
-       "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Modules" \
-       "$APP/Contents/Frameworks/Sparkle.framework/Headers" \
-       "$APP/Contents/Frameworks/Sparkle.framework/PrivateHeaders" \
-       "$APP/Contents/Frameworks/Sparkle.framework/Modules"
-# The copy carries Sparkle's own signature, which no longer covers what is there.
-# Removing it now keeps the re-sign below from arguing with a stale seal.
-rm -rf "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/_CodeSignature"
-
 # The icon is the PARTY keycap's confetti glyph — the same artwork as the physical
 # key, so what is in the Dock and what is under your hand are recognisably one
 # product. Generated rather than checked in: there is no asset catalog (actool is an
@@ -251,9 +186,6 @@ ICONSET="$ROOT/.build/OpenBoard.iconset"
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/OpenBoard.icns"
 
 # ---------------------------------------------------------------- Info.plist
-#
-# Ordinary local builds carry no update feed or key. Releases and the localhost test
-# harness opt in explicitly.
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -282,18 +214,6 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>NSAppleEventsUsageDescription</key>
   <string>OpenBoard drives System Events to type snippets and send keystrokes, Terminal to jump to a chat, and QuickTime Player for fun mode.</string>
   <key>CFBundleIconFile</key>           <string>OpenBoard</string>
-
-  <!-- Sparkle. Empty unless OB_ENABLE_UPDATES=1 passes a feed explicitly. A feed URL is
-       compiled into every build and read by an installed copy forever, so one that is
-       ever shipped must be on a host that can be re-pointed. -->
-  <key>SUFeedURL</key>
-  <string>$FEED_URL</string>
-$ATS_EXCEPTION
-  <key>SUPublicEDKey</key>
-  <string>$SPARKLE_PUBLIC_KEY</string>
-  <key>OBUpdatesEnabled</key>           <$UPDATES_ENABLED/>
-  <key>SUEnableAutomaticChecks</key>    <$UPDATES_ENABLED/>
-  <key>SUScheduledCheckInterval</key>   <integer>86400</integer>
 
   <key>OBSourceStamp</key>              <string>$STAMP</string>
 </dict>
@@ -342,10 +262,10 @@ ENTITLEMENTS="$ROOT/OpenBoard.entitlements"
 
 # The hardened runtime also enforces library validation, which requires embedded
 # frameworks to carry the *same Team ID* as the app. A self-signed identity has no
-# Team ID at all, so Sparkle.framework fails validation — even though both are signed
-# by the identical certificate — and dyld kills the app at launch with "different
-# Team IDs", before the first log line. A Developer ID signature has a real Team ID
-# and never hits this, which is why only the local rung needs the exception.
+# Team ID, so the embedded Sparkle.framework used to fail validation and dyld killed the
+# app at launch, before the first log line. Sparkle is gone (2026-11-22) and nothing is
+# embedded now, so this exception is probably unnecessary — kept until a build without
+# it has been verified to launch.
 if [ "$IDENTITY_KIND" != "developer-id" ]; then
   LOCAL_ENTITLEMENTS="$ROOT/.build/OpenBoard-local.entitlements"
   cp "$ENTITLEMENTS" "$LOCAL_ENTITLEMENTS"
@@ -362,30 +282,9 @@ sign() {
     --options runtime $TS_FLAG "$1" 2>&1 | grep -v "replacing existing" || true
 }
 
-# Sparkle's helpers carry entitlements that make them work; re-signing without
-# --preserve-metadata drops them and the updater fails at the point of installing,
-# which is the worst possible moment to discover it.
-sign_preserving() {
-  codesign --force --sign "$IDENTITY" \
-    --options runtime $TS_FLAG --preserve-metadata=entitlements "$1" \
-    2>&1 | grep -v "replacing existing" || true
-}
-
-# Inside out: the deepest nested code first, then each container, then the bundle that
-# seals all of it. Reversing these invalidates the outer signature the moment the inner
-# one is rewritten — and codesign does not warn, it just produces a bundle that fails
-# to launch on a machine that checks.
-#
-# Re-signed with *our* identity rather than left with Sparkle's own. The hardened
-# runtime enforces library validation: a framework signed by a different team will not
-# load, and the alternative is to weaken the runtime with
-# com.apple.security.cs.disable-library-validation, which is a bad trade for one
-# dependency.
-SPARKLE_V="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
-sign_preserving "$SPARKLE_V/Updater.app"
-sign_preserving "$SPARKLE_V/Autoupdate"
-sign_preserving "$APP/Contents/Frameworks/Sparkle.framework"
-
+# Inside out: the nested helper first, then the bundle that seals it. Reversing these
+# invalidates the outer signature the moment the inner one is rewritten — and codesign
+# does not warn, it just produces a bundle that fails to launch on a machine that checks.
 sign "$APP/Contents/MacOS/openboard-hook" "$BUNDLE_ID.hook"
 sign "$APP" "$BUNDLE_ID"
 

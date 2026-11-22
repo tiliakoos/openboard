@@ -22,11 +22,7 @@ behind `if #available(macOS 26.0, *)` — so it runs correctly on macOS 14 witho
 availability gating is a runtime check, and the symbols still have to exist at compile
 time.
 
-The one dependency is [Sparkle](https://sparkle-project.org), embedded by hand in
-`build-app.sh` and switched off: builds carry no feed or key. `OB_ENABLE_UPDATES=1` turns
-it on only with an explicit `OB_FEED_URL` and `OB_SPARKLE_PUBLIC_KEY`.
-
-There are no releases. `CFBundleVersion` is the commit count on `main`, so keep `main`
+No third-party dependencies, and no updater. There are no releases. `CFBundleVersion` is the commit count on `main`, so keep `main`
 linear and never rewrite its history.
 
 ## Tests
@@ -47,12 +43,9 @@ paired Codex Micro, a running Claude Code — skips when the precondition is abs
 `ok:1` and then ignores it, so a broken write looks identical to a working one. Verify
 against the real pad with `mac/tools/reload.sh` before believing a change works.
 
-Two harnesses cover what is otherwise invisible:
-
-| | |
-|---|---|
-| `mac/tools/test-onboarding.sh` | rehearses a first install: revokes permissions and points the app at a scratch state directory. Costs a few minutes of re-granting afterwards |
-| `mac/tools/test-update.sh` | a real Sparkle update against a localhost feed; needs your own Sparkle key pair |
+`mac/tools/test-onboarding.sh` rehearses a first install: it revokes permissions and
+points the app at a scratch state directory. It costs a few minutes of re-granting
+afterwards.
 
 ## No pad on the desk
 
@@ -70,8 +63,8 @@ quirks or Bluetooth behaviour.
 ## CI
 
 Every push to `main` builds the app, runs the suite, assembles the `.app` bundle and
-asserts things unit tests cannot catch: the framework embed, inside-out signing of
-`openboard-hook`, updates being off, and the `apple-events` entitlement. That last one
+asserts things unit tests cannot catch: inside-out signing of `openboard-hook`, nothing
+embedded under `Frameworks/`, and the `apple-events` entitlement. That last one
 once shipped missing, and macOS then denied Automation *without ever showing a consent
 dialog*. CI uses no secrets.
 

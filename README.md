@@ -167,8 +167,7 @@ Wilson**: the original idea, the protocol work against this pad, and the app up 
 
 The HID transport was first published by [@pejmanjohn](https://github.com/pejmanjohn) in
 [`codex-micro-light`](https://github.com/pejmanjohn/codex-micro-light).
-[Sparkle](https://sparkle-project.org) is embedded, and a few vendor marks identify the
-agents in Settings. Details in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) and
+A few vendor marks identify the agents in Settings. Details in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) and
 [VENDORED.md](VENDORED.md).
 
 ## License
