@@ -13,34 +13,22 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing anything structural — 
 record of *why* several things are the way they are, and most of it was paid for by a
 real bug.
 
-## This checkout is a fork — where to commit
+## Repository and branches
 
-`origin` is Nick's fork (`tiliakoos/openboard`); `upstream` is the author's repo
-(`camwilso/openboard`). **Which branch you work on is decided by where the change should
-end up**, because a PR carries every commit on its branch.
+This repo (`tiliakoos/openboard`) is Nick's standalone project. It began as a fork of Cam
+Wilson's `camwilso/openboard` and left that fork network on 2026-11-22, after upstream's
+0.3.0 (tagged `upstream-0.3.0`; Nick's history at the split is `pre-split`).
 
-| Branch | Purpose | Rule |
-|---|---|---|
-| `main` | Clean mirror of upstream | **Never commit here.** Only updated by `git merge upstream/main`. |
-| `features/tiliakoos` | Nick's daily-driver tweaks and personal tooling (this file included) | Default place to edit. Never open a PR from it. |
-| `fix/<name>` | One single change destined for an upstream PR | Cut fresh off `main`, one change only, delete after merge. |
+- **Work on `main`**, linearly. No release branches or tags. `CFBundleVersion` is the commit
+  count, so never rewrite `main`'s history.
+- `upstream` is still a remote, **fetch-only** (its push URL is `DISABLED`). Cherry-pick
+  from it if something there is worth having; nothing is merged from it wholesale.
+- Keep Cam's copyright line in LICENSE (MIT requires it) and the credit in README.
 
-If a personal tweak later turns out to be PR-worthy, `git cherry-pick` that commit onto a
-clean branch off `main` rather than PRing the daily branch.
+Daily loop: edit, `mac/tools/reload.sh`, `swift run OpenBoardTests`, commit, `git push`.
 
-Daily loop: edit on `features/tiliakoos`, `mac/tools/reload.sh`, `swift run OpenBoardTests`,
-commit, `git push` (backup to the fork). Syncing upstream is
-`git fetch upstream && git switch main && git merge upstream/main`, then merge `main` into
-`features/tiliakoos` — resolve conflicts in upstream's favour where the conflict is against
-something that was merged there.
-
-**Never open a PR or push to `upstream` without Nick's explicit go-ahead** — it is
-outward-facing. Upstream also asks for an issue first on anything touching the *harness
-model*; build-script and UI changes need none.
-
-The full playbook lives in the Obsidian vault at
-`~/Documents/Obsidian_Vault/Projects/03_openboard/fork-workflow.md`; PR status and the
-fork's history are in `status.md` beside it.
+The fork's history and decisions are in the Obsidian vault at
+`~/Documents/Obsidian_Vault/Projects/03_openboard/` (`status.md`, `decision-log.md`).
 
 ### Local signing, and why this build never auto-updates
 
@@ -56,9 +44,11 @@ signs non-Developer-ID builds with `com.apple.security.cs.disable-library-valida
 merged in (via PlistBuddy — `plutil` misreads the dotted key). Developer ID builds are
 untouched.
 
-This locally built app does not auto-update, which is deliberate: it protects the local
-changes. `build-app.sh` leaves the feed and key empty unless `OB_ENABLE_UPDATES=1`. Syncing from `upstream` *is* the update path. Do not reinstall the Homebrew cask
-— it would clobber this build.
+This app does not auto-update, by design: a build from this repo is the only update path.
+`build-app.sh` leaves the feed and key empty, and `OB_ENABLE_UPDATES=1` needs both passed
+explicitly (`OB_FEED_URL`, `OB_SPARKLE_PUBLIC_KEY`) — there is no default pointing at the
+original project's feed. **Never install Cam's Homebrew cask or release zip**: it installs
+to the same `/Applications/OpenBoard.app` and would replace this build.
 
 ## Commands
 
@@ -101,15 +91,6 @@ write looks identical to a working one. Verify against the real pad via `tools/r
 Two extra harnesses for the otherwise-invisible: `tools/test-onboarding.sh` (rehearses a
 first install with permissions revoked and a scratch state dir) and `tools/test-update.sh`
 (a real Sparkle update against a local feed).
-
-### Releases (upstream's, not this fork's)
-
-Releases are the author's to cut, and nothing here should ever tag or run
-`tools/release.sh`. Recorded because the constraint explains the repo's shape: a release is
-a tag on `main`, and **never on a side branch** — `CFBundleVersion` is the commit count
-reachable from the tag, Sparkle compares exactly that, and a lower number means the update
-is silently never offered, permanently, for that version. `tools/release.sh` refuses a tag
-that is not an ancestor of `main`.
 
 ## Architecture
 
@@ -217,13 +198,12 @@ These read as arbitrary and are not:
 
 ## Permanent identifiers
 
-The bundle id (`com.openboardapp.mac`), the Sparkle feed URL
-(`https://updates.openboardapp.com/appcast.xml`) and the signing team are effectively
-immutable. macOS keys TCC grants and login-item registration off the bundle id, and
-installed copies read the feed URL forever. Only release builds carry the feed, so
-`release.sh` asserts it; CI asserts that ordinary builds have updates off, plus the Sparkle
-embed, the inside-out signing of `openboard-hook`, and the `apple-events` entitlement — that
-last one shipped missing once and made Automation ungrantable *with no dialog at all*.
+The bundle id (`com.openboardapp.mac`) and the local signing certificate are effectively
+immutable: macOS keys TCC grants and login-item registration off them, so changing either
+means re-granting every permission. CI asserts that builds have updates off, plus the
+Sparkle embed, the inside-out signing of `openboard-hook`, and the `apple-events`
+entitlement — that last one shipped missing once and made Automation ungrantable *with no
+dialog at all*.
 
 ## Logs
 

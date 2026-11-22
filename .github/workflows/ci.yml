@@ -1,8 +1,6 @@
 # Build and test every push.
 #
-# The release workflow only fires on a tag, which meant a broken main was discovered
-# at the exact moment you were trying to ship from it. This runs on the ordinary
-# pushes instead, and needs no secrets at all — nothing here signs, notarizes or
+# Runs on ordinary pushes and needs no secrets at all — nothing here signs, notarizes or
 # publishes, so it is safe on a fork and on a pull request from one.
 #
 # It does assemble the bundle. The unit tests cannot catch a Sparkle framework that
@@ -30,8 +28,9 @@ concurrency:
 
 jobs:
   test:
-    # macos-26 — see the note in release.yml. The app compiles against macOS 26 API
-    # that is availability-gated at runtime but still has to exist at build time.
+    # macos-26, pinned rather than macos-latest. The app compiles against macOS 26
+    # (Liquid Glass) API that is availability-gated at runtime but still has to exist
+    # in the SDK at build time; macos-15 does not have it.
     runs-on: macos-26
 
     steps:

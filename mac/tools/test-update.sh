@@ -18,8 +18,10 @@
 # The parts that are silent when broken: that Sparkle can parse the feed, that the
 # EdDSA signature verifies against the key compiled into the app, that the bundle can
 # be replaced in place, and that the app comes back afterwards. It does *not* prove
-# notarization or Gatekeeper — those need a Developer ID build and a real download,
-# and tools/release.sh covers them.
+# notarization or Gatekeeper — those need a Developer ID build and a real download.
+#
+# Needs OB_SPARKLE_PUBLIC_KEY exported, matching the private key sign_update finds in
+# your keychain (Sparkle's generate_keys makes the pair).
 #
 # ## The version numbers
 #
@@ -87,7 +89,7 @@ ATTRS=$("$SIGN_UPDATE" "$SERVE/OpenBoard-$NEW_VERSION.zip")
 [ -n "$ATTRS" ] || die "sign_update produced nothing — is the private key in your keychain?"
 note "$(printf '%s' "$ATTRS" | cut -c1-60)…"
 
-# The same shape appcast.sh writes, so a failure here is a failure there too.
+# A minimal Sparkle appcast: one item, signed by sign_update above.
 cat > "$SERVE/appcast.xml" <<FEED_XML
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">

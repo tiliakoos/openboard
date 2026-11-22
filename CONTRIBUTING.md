@@ -5,13 +5,8 @@ to a physical keypad, so some of it cannot be verified without one.
 
 ## The shape of it
 
-```
-feature branch ──► pull request ──► main ──► tag ──► release
-```
-
-Short-lived branches, squashed into `main`. Releases are cut by **tagging `main`**, never
-by merging a release branch — see [Why releases are tags](#why-releases-are-tags-on-main)
-for why that is not a style preference.
+Work lands on `main`, linearly. There are no release tags or packaged builds — see
+[Releases](#releases).
 
 ## Building
 
@@ -26,8 +21,9 @@ tools/build-app.sh --install  # assemble, sign, install to /Applications
 tools/reload.sh               # rebuild, reinstall and relaunch in one step
 ```
 
-Ordinary local builds keep Sparkle updates off. `release.sh` enables them only with a
-valid Developer ID identity; `test-update.sh` opts into its localhost feed.
+Builds keep Sparkle updates off. `OB_ENABLE_UPDATES=1` turns them on only with an
+explicit `OB_FEED_URL` and `OB_SPARKLE_PUBLIC_KEY`; `test-update.sh` uses that for its
+localhost feed.
 
 You need the **macOS 26 SDK**. The app draws with Liquid Glass, and while every call is
 behind `if #available(macOS 26.0, *)` — so it runs correctly on macOS 14 without it —
@@ -118,37 +114,11 @@ keychain and keeps its Input Monitoring and Accessibility grants across rebuilds
 artifact is ad-hoc signed, so macOS treats every download as a brand new application and
 you re-grant everything by hand to test one change.
 
-## Cutting a release
+## Releases
 
-```sh
-git tag v0.2.0 && git push origin v0.2.0   # CI does the rest
-```
-
-`.github/workflows/release.yml` builds universal, signs with Developer ID, notarizes,
-staples, appends to the appcast on the `feed` branch, and publishes the release. The same
-thing runs locally as `mac/tools/release.sh`, which needs a Developer ID certificate,
-notary credentials and the Sparkle private key present — it checks for all three before
-building rather than failing forty seconds in.
-
-Universal builds go one triple at a time and then `lipo`, rather than SwiftPM's
-`--arch arm64 --arch x86_64`: that flag routes through XCBuild, which only ships with full
-Xcode, and this project has never needed more than the Command Line Tools.
-
-The Homebrew cask lives in [`packaging/homebrew/`](packaging/homebrew/openboard.rb); the
-copy Homebrew reads is in the `camwilso/homebrew-tap` repo.
-
-### Why releases are tags on `main`
-
-`CFBundleVersion` is the number of commits reachable from the tagged commit, and Sparkle
-compares exactly that field to decide whether an update is newer. It must increase
-monotonically for every build ever published.
-
-A tag on a side branch counts a *different* set of commits — usually fewer — so it can
-produce a build number lower than something already released. Sparkle then decides the new
-version is older than what is installed and never offers it. The failure is silent,
-permanent for that version number, and invisible except as "nobody is updating".
-
-`release.sh` refuses a tag that is not an ancestor of `main`, and refuses a dirty tree.
+There are none: this repo ships no signed, notarized build and no update feed. Install
+from source with `mac/tools/reload.sh`. `CFBundleVersion` is the commit count on `main`,
+so keep `main` linear and never rewrite its history.
 
 ## Where help is most wanted
 

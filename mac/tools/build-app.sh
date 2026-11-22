@@ -113,8 +113,10 @@ FEED_URL=""
 ATS_EXCEPTION=""
 case "${OB_ENABLE_UPDATES:-0}" in
   1)
-    SPARKLE_PUBLIC_KEY=${OB_SPARKLE_PUBLIC_KEY-"CqSaxWCpPony+XcxRwCq73cnQ/g/Mw3mlEKYjYU0Z64="}
-    FEED_URL=${OB_FEED_URL-"https://updates.openboardapp.com/appcast.xml"}
+    SPARKLE_PUBLIC_KEY=${OB_SPARKLE_PUBLIC_KEY-}
+    # No defaults: the original project's feed and key belong to its releases, never to
+    # a build from this repo.
+    FEED_URL=${OB_FEED_URL-}
     # An opted-in build without both would ship unable to ever update itself.
     [ -n "$SPARKLE_PUBLIC_KEY" ] && [ -n "$FEED_URL" ] || {
       printf 'OB_ENABLE_UPDATES=1 needs a non-empty feed URL and public key\n' >&2
@@ -285,21 +287,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <string>OpenBoard drives System Events to type snippets and send keystrokes, Terminal to jump to a chat, and QuickTime Player for fun mode.</string>
   <key>CFBundleIconFile</key>           <string>OpenBoard</string>
 
-  <!-- Sparkle.
-
-       This is the one URL in the project that can never be changed: it is compiled
-       into every build ever shipped, and an installed copy reads it forever. Pointed
-       at a host someone else names — camwilso.github.io — renaming the account or the
-       repo would silently orphan every existing install, with no way to tell them
-       where to look instead. A domain that can be re-pointed removes that, and costs
-       nothing.
-
-       A subdomain rather than the apex because openboardapp.com is the marketing site
-       and is not ours to write a file into on every release. Splitting them means the
-       feed's host can change without touching the site, and vice versa.
-
-       The enclosure URLs *inside* the feed are free to live on GitHub Releases: the
-       feed is rewritten every release, so those can move whenever. -->
+  <!-- Sparkle. Empty unless OB_ENABLE_UPDATES=1 passes a feed explicitly. A feed URL is
+       compiled into every build and read by an installed copy forever, so one that is
+       ever shipped must be on a host that can be re-pointed. -->
   <key>SUFeedURL</key>
   <string>$FEED_URL</string>
 $ATS_EXCEPTION

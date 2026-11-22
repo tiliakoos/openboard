@@ -4,13 +4,9 @@
 
 ## Install
 
-```sh
-brew install --cask camwilso/tap/openboard
-```
-
-Or download the zip from [Releases](https://github.com/camwilso/openboard/releases),
-unzip, and drag it to Applications. It is signed and notarized, so it opens normally —
-no right-click-Open, no trip to Security settings.
+Build it from source — see [Building it yourself](../README.md#building-it-yourself).
+`mac/tools/bootstrap.sh` creates a local signing certificate, builds, and installs to
+Applications.
 
 OpenBoard is the only download. You do not need the ChatGPT app or Work Louder's Input
 app installed — the app talks to the pad directly.

@@ -96,10 +96,7 @@ it open"* when this happens. Quit the other one.
 
 ## Updates are not offered
 
-**You built it yourself.** A self-signed build cannot verify the update feed's signature,
-so the controls are hidden rather than offered and broken. `git pull` and rebuild.
-
-**The check is off.** Settings → Device → Version.
+By design: there is no update feed. `git pull` and run `mac/tools/reload.sh`.
 
 ## Where to look
 

@@ -4,7 +4,7 @@ Drive the six Agent-key LEDs on a Work Louder **Codex Micro** from your **Claude
 sessions, so you can see at a glance which session is working, which finished, and which
 is blocked waiting on you.
 
-By **Cam Wilson** — [openboardapp.com](https://openboardapp.com) · MIT licensed.
+Maintained by **Nick T.**, built on Cam Wilson's original [OpenBoard](https://github.com/camwilso/openboard) · MIT licensed.
 
 <p align="center">
   <img src="assets/hero.jpg" width="820"
@@ -131,17 +131,13 @@ whether those signals really are missing, that is worth more than a patch — se
 That is the whole list. Neither the ChatGPT app nor Work Louder's Input app needs to be
 installed — OpenBoard talks to the pad directly.
 
-No runtime dependencies. The only network request it makes is the daily update check,
-which you can turn off. Nothing about your sessions leaves the machine.
+No runtime dependencies, and no update check: a build from this repo never phones home.
+Nothing about your sessions leaves the machine.
 
 ## Install
 
-```sh
-brew install --cask camwilso/tap/openboard
-```
-
-Or download the zip from [Releases](https://github.com/camwilso/openboard/releases),
-unzip, and drag it to Applications. It is signed and notarized, so it opens normally.
+There is no packaged release; build it from source — see
+[Building it yourself](#building-it-yourself).
 
 ### Setting up
 
@@ -206,20 +202,19 @@ takes over the whole pad for the length of a song. Both live in Settings → Col
 
 ## Updates
 
-OpenBoard checks once a day and installs updates in place, which is what keeps its
-permissions and hooks working. Take them.
-
-Check manually or turn the daily check off in **Settings → Device → Version**.
+Pull and rebuild — `mac/tools/reload.sh`. A self-signed build cannot update itself, so
+there is no update check.
 
 ## Uninstall
 
 1. Turn the hooks off in **Settings → Device** — do this first
-2. `brew uninstall --zap --cask openboard`
+2. Quit OpenBoard and delete `/Applications/OpenBoard.app`
+3. Optionally delete `~/Library/Application Support/OpenBoard/` — your colours and
+   calibration
 
 Do not skip the first step. Deleting the app without it leaves entries in
 `~/.claude/settings.json` pointing at a binary that is gone, and every session will try
-to run it. `--zap` also removes your colours and calibration; without it they survive for
-a reinstall.
+to run it.
 
 ## Coexisting with Codex
 
@@ -271,22 +266,25 @@ pasting it into a bug report.
 The app is a SwiftPM package and needs no Apple Developer account to compile:
 
 ```sh
-git clone https://github.com/camwilso/openboard
+git clone https://github.com/tiliakoos/openboard
 cd openboard
 mac/tools/bootstrap.sh
 ```
 
 A build you signed yourself cannot update itself, so Check for Updates is hidden. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and how releases are cut.
+[CONTRIBUTING.md](CONTRIBUTING.md) for the development setup.
 
-## Author
+## Authors
 
-OpenBoard is written and maintained by **Cam Wilson** — the app, the protocol work
-against this pad, the session model, and everything in `mac/`.
+OpenBoard was created by **Cam Wilson** ([camwilso/openboard](https://github.com/camwilso/openboard))
+— the app, the protocol work against this pad, and the session model. This repo split
+from it after 0.3.0 and is maintained by **Nick T.**: T3 Code, Cursor and Claude desktop
+sessions, the off-board waiting list, the background state, and the Bluetooth write path
+are among what has been added since.
 
 ## License
 
-[MIT](LICENSE) — Copyright © 2026 Cam Wilson.
+[MIT](LICENSE) — Copyright © 2026 Cam Wilson and Nick T.
 
 Three things come from elsewhere and keep their own notices: the HID transport this is
 built on was first published by [@pejmanjohn](https://github.com/pejmanjohn) in

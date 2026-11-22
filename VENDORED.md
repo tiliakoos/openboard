@@ -1,7 +1,7 @@
 # Vendored code
 
-OpenBoard is Copyright © 2026 Cam Wilson. This file is the record of the parts that are
-not — what was taken, from where, and how it was changed since.
+OpenBoard is Copyright © 2026 Cam Wilson and Nick T. This file is the record of the parts
+that are not — what was taken, from where, and how it was changed since.
 
 ## Upstream
 

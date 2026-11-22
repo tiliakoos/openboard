@@ -122,22 +122,15 @@ common reason people conclude the app is broken.
 one matters: *not checked* (running on the assumed order), *checked — the standard order*,
 or *custom order recorded* with the slots that moved.
 
-**Version** shows the build and when it last checked for an update. Updates install in
-place, which is what keeps permissions and hooks working — see below.
+**Version** shows the build.
 
 **Files** reveals your settings and log in Finder.
 
 ## Updates
 
-OpenBoard checks once a day and installs updates in place. Take them: replacing the bundle
-where it stands is what preserves the Input Monitoring and Accessibility grants, the login
-item, and the hook paths in `~/.claude/settings.json`. Downloading a fresh copy and
-dragging it over the old one usually works and sometimes does not.
-
-Turn the daily check off, or run one now, in Settings → Device → Version.
-
-A build you compiled yourself cannot update itself — the feed's signature will not verify
-against a key it does not have — so the controls are hidden rather than offered and broken.
+There is no update check. Pull and run `mac/tools/reload.sh`: it rebuilds and replaces the
+bundle where it stands, which is what preserves the Input Monitoring and Accessibility
+grants, the login item, and the hook paths in `~/.claude/settings.json`.
 
 ---
 

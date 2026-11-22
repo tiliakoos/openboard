@@ -1,8 +1,8 @@
 # Third-party notices
 
-OpenBoard is Copyright © 2026 **Cam Wilson**, distributed under the MIT licence in
-[LICENSE](LICENSE). Everything in this repository is his work except the items below,
-which are third-party and carry their own terms.
+OpenBoard is Copyright © 2026 **Cam Wilson** and **Nick T.**, distributed under the MIT
+licence in [LICENSE](LICENSE). Everything in this repository is theirs except the items
+below, which are third-party and carry their own terms.
 
 They are listed because their licences require it, and because it is the honest record
 of what came from where. See [VENDORED.md](VENDORED.md) for exactly what was taken and
