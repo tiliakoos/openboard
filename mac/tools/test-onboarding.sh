@@ -33,7 +33,7 @@ set -eu
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 APP="/Applications/OpenBoard.app"
-BUNDLE_ID="com.openboardapp.mac"
+BUNDLE_ID="com.tiliakoos.openboard"
 SCRATCH="${TMPDIR:-/tmp}openboard-onboarding-$$"
 KEEP=""
 RESET=1

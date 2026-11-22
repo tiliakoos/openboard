@@ -9,6 +9,18 @@
 
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+APP=/Applications/OpenBoard.app
+
+# Cam Wilson's release installs to the same path. If something other than this repo's
+# build is there now, say so: the rebuild below replaces it, but its permission grants
+# may need re-granting.
+if [ -d "$APP" ]; then
+  id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Contents/Info.plist" 2>/dev/null || true)
+  if [ "$id" != "com.tiliakoos.openboard" ] ||
+     ! codesign -dvv "$APP" 2>&1 | grep -q "Authority=OpenBoard Local Signing"; then
+    printf 'WARNING: %s is not a build from this repo (%s) — replacing it; check permissions.\n' "$APP" "${id:-unknown}" >&2
+  fi
+fi
 
 "$ROOT/tools/build-app.sh" --force --install >/dev/null
 : > "$HOME/Library/Logs/OpenBoard/app.log" 2>/dev/null || true

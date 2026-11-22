@@ -38,15 +38,11 @@ INSTALL=""
 UNIVERSAL=""
 INSTALL_DEST="/Applications/OpenBoard.app"
 
-# Reverse-DNS on openboardapp.com, with `mac` naming the platform — this is the macOS
-# app, and the namespace stays open for anything that is not.
-#
-# It was `com.openboard.app` while this was a personal build, which is a domain nobody
-# here owns — fine in a keychain, not fine on other people's machines. Worth getting
-# right *once*: macOS keys TCC grants and the login-item registration off the bundle id,
-# so changing it after a release silently revokes Input Monitoring and Accessibility for
-# every existing user.
-BUNDLE_ID="com.openboardapp.mac"
+# This repo's own id since it stood alone (2026-11-22); the original project ships as
+# `com.openboardapp.mac`, and sharing it let an install of theirs pass as this app.
+# Worth keeping fixed: macOS keys TCC grants and the login-item registration off the
+# bundle id, so changing it silently revokes Input Monitoring and Accessibility.
+BUNDLE_ID="com.tiliakoos.openboard"
 
 while [ $# -gt 0 ]; do
   case "$1" in

@@ -198,8 +198,8 @@ These read as arbitrary and are not:
 
 ## Permanent identifiers
 
-The bundle id (`com.openboardapp.mac`) and the local signing certificate are effectively
-immutable: macOS keys TCC grants and login-item registration off them, so changing either
+The bundle id (`com.tiliakoos.openboard`, since 2026-11-22; `com.openboardapp.mac` is the
+original project's) and the local signing certificate are effectively immutable: macOS keys TCC grants and login-item registration off them, so changing either
 means re-granting every permission. CI asserts that builds have updates off, plus the
 Sparkle embed, the inside-out signing of `openboard-hook`, and the `apple-events`
 entitlement — that last one shipped missing once and made Automation ungrantable *with no
