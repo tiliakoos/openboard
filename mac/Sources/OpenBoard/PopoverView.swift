@@ -12,11 +12,13 @@ import SwiftUI
  the pad, and repeating it in a menu opened a hundred times a day was space spent on
  something looked up twice a year.
 
- When the pad is unusable a banner says so above the sessions, which stay. The list
- used to be replaced entirely on the grounds that a board you cannot trust is worse
- than no board — but the sessions are not the board: they come from hooks and the
- process table, jumping to one is AppleScript or the cmux socket, and none of that
- needs the pad. Only the lights do, and the banner owns that fact.
+ ## Without the pad
+
+ The sessions are not the board: they come from hooks and the process table, jumping to
+ one is AppleScript or the cmux socket, and none of that needs the pad. So when the pad
+ is away or asleep this is a plain list of sessions — no key numbers, no free keys, and
+ nothing said about hardware, because being away is the pad's ordinary state and not a
+ fault. Only a real fault (`DeviceStatus.isFault`) gets a banner.
  */
 struct PopoverView: View {
     @EnvironmentObject private var board: BoardModel
@@ -29,16 +31,21 @@ struct PopoverView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider().opacity(0.6)
 
             // Setup first, then the hardware. An install missing hooks has a working
             // pad and six keys that will never change — showing that board is showing
             // something that looks live and is not, which is worse than showing
             // nothing. The device states below are for a set-up install whose pad has
             // gone away.
+            //
+            // Every section brings its own divider, so an empty one leaves no doubled
+            // rule behind: with no pad and no sessions the header sits straight on the
+            // commands.
             if !setup.hasSettled {
+                divider
                 CheckingView()
             } else if !setup.isReady, !setup.isSkipped {
+                divider
                 SetupNeededView(
                     progress: setup.progress,
                     sessions: board.slots.filter(\.isLive).count,
@@ -54,29 +61,30 @@ struct PopoverView: View {
                 // session list came to be invisible while the commands below it rendered
                 // fine. The content is at most six rows plus a capped list, so it has a
                 // known height and never needs to scroll.
-                VStack(spacing: 0) {
-                    if !board.device.isUsable {
-                        DeviceDownBanner(
-                            status: board.device,
-                            name: board.deviceName,
-                            retry: { commands.sync() },
-                            startSetup: {
-                                commands.dismissMenu()
-                                commands.openSetup()
-                            }
-                        )
-                        Divider().opacity(0.6)
-                    }
+                if board.device.isFault {
+                    divider
+                    DeviceDownBanner(
+                        status: board.device,
+                        name: board.deviceName,
+                        retry: { commands.sync() },
+                        startSetup: {
+                            commands.dismissMenu()
+                            commands.openSetup()
+                        }
+                    )
+                }
+                if !rows.isEmpty {
+                    divider
                     if !board.blocked.isEmpty { blockedRow }
                     sessions
-                    if !board.offBoard.isEmpty {
-                        Divider().opacity(0.6)
-                        offBoardSessions
-                    }
+                }
+                if !board.offBoard.isEmpty {
+                    divider
+                    offBoardSessions
                 }
             }
 
-            Divider().opacity(0.6)
+            divider
             commandRows
         }
         .frame(width: width)
@@ -84,6 +92,12 @@ struct PopoverView: View {
         // with a stale answer would keep offering setup after it was finished.
         .onAppear { setup.refresh() }
     }
+
+    private var divider: some View { Divider().opacity(0.6) }
+
+    /// Whether the pad is there to press. Decides between a board of keys and a list
+    /// of sessions, everywhere below.
+    private var padLive: Bool { board.device.isUsable }
 
     // MARK: header
 
@@ -149,8 +163,9 @@ struct PopoverView: View {
                     .fill(Color(RGB(0xFF6A00)))
                     .frame(width: 9, height: 9)
                     .shadow(color: Color(RGB(0xFF6A00)), radius: 5)
-                Text(blockedText)
+                blockedLabel
                     .font(.system(size: 12.5, weight: .semibold))
+                    .lineLimit(1)
                 Spacer(minLength: 0)
                 Text("⏎").font(.system(size: 12)).foregroundStyle(.secondary)
             }
@@ -169,30 +184,53 @@ struct PopoverView: View {
 
     /// With two or more blocked, the pad's approve key refuses to guess between
     /// them — so the row says which, rather than implying a single target.
-    private var blockedText: String {
+    ///
+    /// Without the pad there are no slot numbers to name, so one waiting session is
+    /// called by its title. The title is what truncates; what it is waiting on is the
+    /// part worth reading and never does.
+    @ViewBuilder
+    private var blockedLabel: some View {
         let blocked = board.blocked
-        if blocked.count == 1 {
-            let slot = blocked[0]
-            let tool = slot.pendingTool.map { " on \($0)" } ?? ""
-            return "Slot \(slot.slot) is waiting\(tool)"
+        let tool = blocked.first?.pendingTool.map { " on \($0)" } ?? ""
+        if blocked.count > 1 {
+            Text(padLive
+                ? "Slots \(blocked.map { String($0.slot) }.joined(separator: " and ")) are waiting"
+                    + " — press one of those keys"
+                : "\(blocked.count) sessions are waiting")
+        } else if padLive {
+            Text("Slot \(blocked.first?.slot ?? 0) is waiting\(tool)")
+        } else {
+            HStack(spacing: 4) {
+                Text("“\(blocked.first?.title ?? "Untitled chat")”")
+                    .truncationMode(.tail)
+                Text("is waiting\(tool)")
+                    .fixedSize()
+            }
         }
-        let slots = blocked.map { String($0.slot) }.joined(separator: " and ")
-        return "Slots \(slots) are waiting — press one of those keys"
     }
 
     // MARK: sessions
 
+    /// The agent keys a session can be on — every one not bound to an action.
+    private var agentKeys: [SlotView] { board.slots.filter { board.actions[$0.key] == nil } }
+
+    /// What the list shows. With the pad, every agent key, free ones included: a free
+    /// key is a real thing on the desk. Without it there are no keys, only sessions.
+    private var rows: [SlotView] { padLive ? agentKeys : agentKeys.filter(\.isOccupied) }
+
     private var sessions: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionLabel("Agent keys")
-            ForEach(board.slots.filter { board.actions[$0.key] == nil }) { slot in
+        let rows = rows
+        return VStack(alignment: .leading, spacing: 0) {
+            SectionLabel(padLive ? "Agent keys" : "Sessions")
+            ForEach(Array(rows.enumerated()), id: \.element.id) { index, slot in
                 SessionRow(
                     slot: slot,
                     capID: board.caps[slot.key],
+                    padLive: padLive,
                     jump: { commands.jump(slot.slot) },
                     release: { commands.release(slot.slot) },
-                    moveUp: { commands.move(slot.slot, -1) },
-                    moveDown: { commands.move(slot.slot, 1) }
+                    moveUp: step(from: slot, to: index > 0 ? rows[index - 1] : nil, by: -1),
+                    moveDown: step(from: slot, to: index < rows.count - 1 ? rows[index + 1] : nil, by: 1)
                 )
             }
         }
@@ -201,10 +239,22 @@ struct PopoverView: View {
         .padding(.bottom, 6)
     }
 
-    // MARK: off the board
+    /**
+     Moving a session one place, or nil when there is nowhere to go.
 
-    /// The agent keys a session can be put on — every one not bound to an action.
-    private var agentKeys: [SlotView] { board.slots.filter { board.actions[$0.key] == nil } }
+     With the pad it is one key, into a free one if that is what is there. Without it
+     the free keys are not listed, so a move has to land on the neighbouring *row*:
+     stepping into a hidden free key would look like nothing happened.
+     */
+    private func step(from slot: SlotView, to neighbour: SlotView?, by direction: Int) -> (() -> Void)? {
+        if padLive {
+            let inRange = direction < 0 ? slot.slot > 1 : slot.slot < BoardLayout.slotCount
+            return inRange ? { commands.move(slot.slot, direction) } : nil
+        }
+        return neighbour.map { neighbour in { commands.move(slot.slot, neighbour.slot - slot.slot) } }
+    }
+
+    // MARK: off the board
 
     /**
      Every active session without a key, across every harness: running, asking for you,
@@ -219,13 +269,14 @@ struct PopoverView: View {
      */
     private var offBoardSessions: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SectionLabel("Not on a key · \(board.offBoard.count)")
+            SectionLabel("\(padLive ? "Not on a key" : "More") · \(board.offBoard.count)")
             ScrollView {
                 VStack(spacing: 0) {
                     ForEach(board.offBoard, id: \.sessionID) { session in
                         OffBoardRow(
                             session: session,
                             keys: agentKeys,
+                            padLive: padLive,
                             jump: { session.sessionID.map(commands.jumpToSession) },
                             assign: { slot in session.sessionID.map { commands.assign($0, slot) } },
                             dismiss: { session.sessionID.map(commands.dismiss) }
@@ -290,10 +341,13 @@ struct SectionLabel: View {
 struct SessionRow: View {
     let slot: SlotView
     let capID: String?
+    /// Whether this row is a key on the desk or just a session in a list.
+    var padLive = true
     var jump: () -> Void = {}
     var release: () -> Void = {}
-    var moveUp: () -> Void = {}
-    var moveDown: () -> Void = {}
+    /// Nil when there is nowhere to move to, which hides the control.
+    var moveUp: (() -> Void)?
+    var moveDown: (() -> Void)?
     @State private var hovering = false
 
     private var showsControls: Bool { slot.isOccupied && hovering }
@@ -315,20 +369,23 @@ struct SessionRow: View {
                 // a move the pointer is over whatever now occupies this row. Moving two
                 // keys is two hovers, not two clicks in place; with six keys that is fine.
                 HStack(spacing: 0) {
-                    if slot.slot > 1 {
-                        control("chevron.up", action: moveUp,
-                                help: "Move this session up one key. Whatever is on that key swaps places.")
+                    if let moveUp {
+                        control("chevron.up", action: moveUp, help: padLive
+                            ? "Move this session up one key. Whatever is on that key swaps places."
+                            : "Move this session up. It swaps places with the one above.")
                     }
-                    if slot.slot < BoardLayout.slotCount {
-                        control("chevron.down", action: moveDown,
-                                help: "Move this session down one key. Whatever is on that key swaps places.")
+                    if let moveDown {
+                        control("chevron.down", action: moveDown, help: padLive
+                            ? "Move this session down one key. Whatever is on that key swaps places."
+                            : "Move this session down. It swaps places with the one below.")
                     }
                     control("xmark.circle.fill", action: {
                         // The next session slides up into this row, under the pointer: hide
                         // the controls so a second click cannot take that one off too.
                         hovering = false
                         release()
-                    }, help: "Take this session off the board. It keeps running and stays listed below, "
+                    }, help: "Take this session \(padLive ? "off the board" : "out of the menu bar"). "
+                        + "It keeps running and stays listed below, "
                         + "and comes back when you put it back or it asks for you.")
                 }
                 .padding(.trailing, 3)
@@ -357,16 +414,20 @@ struct SessionRow: View {
                 .frame(width: 9, height: 9)
                 .shadow(color: slot.swatch.opacity(slot.isOccupied ? 0.9 : 0), radius: 4)
 
-            if let capID, let icon = KeycapCatalog.icon(forCap: capID) {
-                KeycapIconView(icon: icon)
-                    .frame(width: 13, height: 13)
-                    .foregroundStyle(.secondary)
-            }
+            // The keycap and the key number say where to reach. Without the pad there
+            // is nowhere to reach, and they would be a label for something not there.
+            if padLive {
+                if let capID, let icon = KeycapCatalog.icon(forCap: capID) {
+                    KeycapIconView(icon: icon)
+                        .frame(width: 13, height: 13)
+                        .foregroundStyle(.secondary)
+                }
 
-            Text("\(slot.slot)")
-                .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
-                .foregroundStyle(.tertiary)
-                .frame(width: 9, alignment: .leading)
+                Text("\(slot.slot)")
+                    .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 9, alignment: .leading)
+            }
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
@@ -379,8 +440,10 @@ struct SessionRow: View {
                         Image(systemName: "pin.fill")
                             .font(.system(size: 8.5))
                             .foregroundStyle(.tertiary)
-                            .help("Put on the board by hand — nothing automatic will take its key. "
-                                + "Like every key, it moves up when an earlier one frees.")
+                            .help(padLive
+                                ? "Put on the board by hand — nothing automatic will take its key. "
+                                    + "Like every key, it moves up when an earlier one frees."
+                                : "Put here by hand — nothing automatic will take its place.")
                     }
                 }
 
@@ -422,6 +485,8 @@ struct SessionRow: View {
 struct OffBoardRow: View {
     let session: SlotView
     let keys: [SlotView]
+    /// Whether the places it can be put are keys, or just the six the menu bar shows.
+    var padLive = true
     var jump: () -> Void = {}
     var assign: (Int) -> Void = { _ in }
     var dismiss: () -> Void = {}
@@ -441,10 +506,13 @@ struct OffBoardRow: View {
             HStack(spacing: 0) {
                 Menu {
                     if let free = keys.first(where: { !$0.isOccupied }) {
-                        Button("Key \(free.slot) (free)") { assign(free.slot) }
+                        Button(padLive ? "Key \(free.slot) (free)" : "Show in the menu bar") {
+                            assign(free.slot)
+                        }
                     }
                     ForEach(keys.filter(\.isOccupied)) { key in
-                        Button("Key \(key.slot) · replace \(key.title ?? "Untitled chat")") {
+                        let name = key.title ?? "Untitled chat"
+                        Button(padLive ? "Key \(key.slot) · replace \(name)" : "Replace \(name)") {
                             assign(key.slot)
                         }
                     }
@@ -457,7 +525,9 @@ struct OffBoardRow: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .padding(.horizontal, 5)
-                .help("Put this session on a key. Whatever is on that key comes off the board.")
+                .help(padLive
+                    ? "Put this session on a key. Whatever is on that key comes off the board."
+                    : "Show this session in the menu bar. Whatever it replaces moves down here.")
 
                 Button {
                     // The next row slides up under the pointer, as on the key rows.
@@ -592,8 +662,9 @@ struct MenuRow: View {
     }
 }
 
-/// The pad is unreachable. A banner above the sessions rather than a wall in front of
-/// them: the lights are down, the sessions are not.
+/// Something is wrong with the pad that a person has to fix — not merely away or
+/// asleep, which gets no banner at all. Above the sessions rather than a wall in front
+/// of them: the lights are down, the sessions are not.
 struct DeviceDownBanner: View {
     let status: DeviceStatus
     var name: String = "Codex Micro"

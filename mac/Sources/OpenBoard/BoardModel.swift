@@ -294,6 +294,17 @@ enum DeviceStatus: Equatable {
 
     var isUsable: Bool { self == .ready }
 
+    /// Whether something is wrong, as opposed to the pad simply not being here. Away
+    /// and asleep are the pad's ordinary resting states — it sleeps dozens of times a
+    /// day — and the app carries on as a session list without comment. These are the
+    /// states that need a person, so they are the only ones the popover interrupts for.
+    var isFault: Bool {
+        switch self {
+        case .inUseElsewhere, .secureInputBlocked, .permissionDenied: true
+        case .unknown, .ready, .bluetoothDisconnected, .bluetoothOff, .notFound: false
+        }
+    }
+
     /// Whether this is something guided setup can fix, rather than something about the
     /// hardware. "Try again" is the wrong offer for a missing permission — retrying
     /// asks macOS the same question and gets the same answer, so the button has to send
